@@ -138,7 +138,14 @@ gezielt nach genau diesen. Abgeschnittene Antworten werden repariert, soweit die
 
 ## Bedienung
 
-- **Wort antippen/anklicken**: nachschlagen. **Mehrere Wörter markieren**: Phrase nachschlagen (z. B. Phrasal Verbs).
+- **Modi** (Knopf oben rechts zeigt den aktuellen, ein Tipp schaltet weiter; Tasten `l` / `u` / `m`; am Tablet ein
+  Tipp mit **zwei Fingern** ins Buch; der farbige Rand oben zeigt den Modus):
+  - 🔤 **Übersetzen** (Standard): **Wort antippen/anklicken** schlägt nach. **Mehrere Wörter auswählen**: Phrase
+    nachschlagen (z. B. Phrasal Verbs).
+  - 📖 **Lesen**: Tippen löst nichts aus, nur das linke bzw. rechte Drittel blättert zurück/weiter.
+  - 🖍 **Markieren**: Wort antippen markiert es sofort; Text auswählen (beliebig lang, auch über Absätze) und dann
+    eine Farbe antippen. Eine Markierung antippen: Farbe ändern, Notiz, Löschen, Nachschlagen. ☰ oben listet alle
+    Markierungen des Buchs, ein Tipp springt hin. Markierungen kommen mit in die Sicherung und den Drive-Abgleich.
 - **Speichern** legt das Wort mit Satz an; erneutes Nachschlagen in einem anderen Satz fügt einen weiteren Kontext hinzu.
 - **Ignorieren** für Namen u. Ä.: Das Wort kommt nicht ins Quiz.
 - Blättern: Pfeiltasten, Wischen oder die Pfeile am Rand. Bei PDFs schaltet ⇔ zwischen ganzer Seite und voller Breite um.
@@ -171,7 +178,7 @@ dort also nur Bücher aus vertrauenswürdigen Quellen öffnen.
 functions/_middleware.ts     Passwortschutz → server/auth.ts (auch im Vite-Dev-/Preview-Server)
 functions/api/translate.ts   Cloudflare Pages Function → server/translate.ts (auch im Vite-Dev-Server)
 scripts/build-dictionary.mjs Ding → public/dict/en-de/<shard>.json
-src/reader/                  foliate-js einbinden, Wort/Satz unter dem Finger finden
+src/reader/                  foliate-js einbinden, Wort/Satz unter dem Finger finden, Modi, Markierungen
 src/dict/                    Wörterbuch nachschlagen, komplett offline speichern
 src/lookup/                  Popup: Wörterbuch + DeepL, Speichern
 src/translate/               DeepL-Client, offline gespeicherte Wörter nachübersetzen

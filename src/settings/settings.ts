@@ -1,5 +1,6 @@
 import { useLiveQuery } from 'dexie-react-hooks'
-import { db, type CardType } from '../db/schema'
+import { db, type CardType, type HighlightColor } from '../db/schema'
+import type { ReaderMode } from '../reader/modes'
 
 export interface AppSettings {
   /** sent as X-App-Token to /api/translate */
@@ -12,6 +13,10 @@ export interface AppSettings {
   /** words per "Mit Claude anreichern" batch */
   enrichBatchSize: number
   readerFontScale: number
+  /** what a tap in the book does (per device) */
+  readerMode: ReaderMode
+  /** color for the next mark */
+  highlightColor: HighlightColor
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -21,13 +26,16 @@ export const DEFAULT_SETTINGS: AppSettings = {
   newCardsPerDay: 20,
   enrichBatchSize: 30,
   readerFontScale: 1,
+  readerMode: 'translate',
+  highlightColor: 'yellow',
 }
 
 /**
  * Rows in db.settings that belong to this device only: never part of a backup and
- * never overwritten by one (open enrichment batch, Google Drive connection).
+ * never overwritten by one (open enrichment batch, Google Drive connection, reader mode:
+ * reading on the tablet, translating on the desktop is fine).
  */
-export const LOCAL_SETTING_KEYS: ReadonlySet<string> = new Set(['enrichBatch', 'drive'])
+export const LOCAL_SETTING_KEYS: ReadonlySet<string> = new Set(['enrichBatch', 'drive', 'readerMode'])
 
 export async function getSettings(): Promise<AppSettings> {
   const rows = await db.settings.toArray()

@@ -132,6 +132,31 @@ export interface Tombstone {
   at: number
 }
 
+export const HIGHLIGHT_COLORS = ['yellow', 'green', 'blue', 'pink'] as const
+export type HighlightColor = (typeof HIGHLIGHT_COLORS)[number]
+
+/** A passage marked in a book (src/reader/highlights.ts). */
+export interface Highlight {
+  /** random, not crypto.randomUUID (missing over plain http in the LAN) */
+  id: string
+  bookId: string
+  bookTitle: string
+  /** foliate section index (PDF: page) */
+  section: number
+  /** offsets in buildBlockText(doc.body).text of that section */
+  start: number
+  end: number
+  text: string
+  /** only for jumping there, like Context.cfi */
+  cfi?: string
+  color: HighlightColor
+  note?: string
+  createdAt: number
+  updatedAt: number
+  /** soft delete, so that syncing with another device does not bring it back */
+  deleted?: boolean
+}
+
 export class AppDB extends Dexie {
   books!: EntityTable<Book, 'id'>
   terms!: EntityTable<Term, 'id'>
@@ -142,6 +167,7 @@ export class AppDB extends Dexie {
   settings!: EntityTable<Setting, 'key'>
   driveFiles!: EntityTable<DriveFileRow, 'id'>
   tombstones!: EntityTable<Tombstone, 'id'>
+  highlights!: EntityTable<Highlight, 'id'>
 
   constructor(name = 'vokabel-reader') {
     super(name)
@@ -158,6 +184,10 @@ export class AppDB extends Dexie {
     this.version(2).stores({
       driveFiles: 'id, bookId, state',
       tombstones: 'id, at',
+    })
+    // highlights; only a new table
+    this.version(3).stores({
+      highlights: 'id, bookId, updatedAt',
     })
   }
 }

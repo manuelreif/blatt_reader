@@ -843,3 +843,158 @@ h2 {
   overflow-y: auto;
   padding-left: 1.1rem;
 }
+
+/* reader modes (like vim's: always visible, colored edge of the reading area) */
+
+.mode-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.25rem 0.55rem;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.reader-stage {
+  border-top: 3px solid transparent;
+}
+
+.mode-read .reader-stage {
+  border-top-color: var(--line);
+}
+
+.mode-translate .reader-stage {
+  border-top-color: color-mix(in srgb, var(--accent) 60%, transparent);
+}
+
+.mode-mark .reader-stage {
+  border-top-color: #e0a800;
+}
+
+.mode-mark .mode-switch {
+  background: color-mix(in srgb, #e0a800 22%, var(--surface));
+}
+
+.mode-translate .mode-switch {
+  background: color-mix(in srgb, var(--accent) 14%, var(--surface));
+}
+
+@media (max-width: 600px) {
+  .mode-label {
+    display: none;
+  }
+}
+
+.reader-toast {
+  position: fixed;
+  top: 3.4rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 30;
+  pointer-events: none;
+  max-width: calc(100% - 2rem);
+}
+
+.reader-toast span {
+  display: block;
+  padding: 0.4rem 0.9rem;
+  border-radius: 999px;
+  background: var(--text);
+  color: var(--bg);
+  font-size: 0.9em;
+  text-align: center;
+  box-shadow: 0 4px 16px rgb(0 0 0 / 0.2);
+}
+
+/* marks */
+
+.swatches {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.swatch {
+  display: inline-block;
+  width: 2rem;
+  height: 2rem;
+  min-width: 2rem;
+  padding: 0;
+  border-radius: 50%;
+  border: 2px solid var(--line);
+}
+
+span.swatch {
+  width: 0.9rem;
+  height: 0.9rem;
+  min-width: 0.9rem;
+  margin-top: 0.25rem;
+}
+
+.swatch[aria-pressed='true'] {
+  border-color: var(--text);
+  box-shadow: 0 0 0 2px var(--surface) inset;
+}
+
+.swatch-yellow {
+  background: #ffd84d;
+}
+.swatch-green {
+  background: #7fd88a;
+}
+.swatch-blue {
+  background: #8cbcff;
+}
+.swatch-pink {
+  background: #ff9fcf;
+}
+
+.mark-sheet .sheet-actions {
+  flex-wrap: wrap;
+}
+
+.mark-quote {
+  font-style: italic;
+  overflow-wrap: anywhere;
+  padding-right: 0.5rem;
+}
+
+.mark-note {
+  display: block;
+  margin: 0.3rem 0 0.6rem;
+}
+
+.mark-note textarea {
+  width: 100%;
+  resize: vertical;
+  font: inherit;
+}
+
+.mark-items {
+  list-style: none;
+  margin: 0 0 0.8rem;
+  padding: 0;
+}
+
+.mark-item {
+  display: flex;
+  gap: 0.6rem;
+  align-items: flex-start;
+  width: 100%;
+  text-align: left;
+  border: none;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+  padding: 0.55rem 0.2rem;
+}
+
+.mark-item .mark-text {
+  display: block;
+}
+
+.mark-item-note {
+  display: block;
+  color: var(--muted);
+  font-size: 0.9em;
+  margin-top: 0.15rem;
+}

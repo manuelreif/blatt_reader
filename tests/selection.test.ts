@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest'
-import { blockOf, buildBlockText, hitFromSelection, offsetOf, rangeFromOffsets } from '../src/reader/selection'
+import { anchorIn } from '../src/reader/highlights'
+import { blockOf, buildBlockText, hitFromSelection, markFromSelection, offsetOf, rangeFromOffsets } from '../src/reader/selection'
 
 function setup(html: string) {
   document.body.innerHTML = html
@@ -63,5 +64,51 @@ describe('hitFromSelection', () => {
     doc.getSelection()!.removeAllRanges()
     doc.getSelection()!.addRange(range)
     expect(hitFromSelection(doc)).toBeNull()
+  })
+})
+
+describe('markFromSelection', () => {
+  it('marks across paragraphs, widened to whole words, with offsets in the section text', () => {
+    const doc = setup('<h2>Title</h2><p id="a">The first paragraph ends here.</p><p id="b">The second one goes on.</p>')
+    const a = doc.getElementById('a')!.firstChild!
+    const b = doc.getElementById('b')!.firstChild!
+    const range = doc.createRange()
+    range.setStart(a, 'The first parag'.length - 2) // inside "paragraph"
+    range.setEnd(b, 'The sec'.length) // inside "second"
+    doc.getSelection()!.removeAllRanges()
+    doc.getSelection()!.addRange(range)
+    const m = markFromSelection(doc)!
+    expect(m.range.toString()).toBe('paragraph ends here.The second')
+    const body = buildBlockText(doc.body).text
+    expect(body.slice(m.start, m.end)).toBe(m.text)
+    expect(m.text).toBe('paragraph ends here.\u2029The second')
+  })
+
+  it('leaves out spaces at the edges and returns null for an empty selection', () => {
+    const doc = setup('<p id="p">alpha beta gamma</p>')
+    const t = doc.getElementById('p')!.firstChild!
+    const range = doc.createRange()
+    range.setStart(t, 5) // the space before "beta"
+    range.setEnd(t, 11) // "beta " incl. the following space
+    doc.getSelection()!.removeAllRanges()
+    doc.getSelection()!.addRange(range)
+    expect(markFromSelection(doc)?.text).toBe('beta')
+
+    const space = doc.createRange()
+    space.setStart(t, 5)
+    space.setEnd(t, 6)
+    doc.getSelection()!.removeAllRanges()
+    doc.getSelection()!.addRange(space)
+    expect(markFromSelection(doc)).toBeNull()
+  })
+})
+
+describe('anchorIn', () => {
+  it('uses the stored offsets, else the nearest occurrence of the text', () => {
+    const text = 'one two three. one two three.'
+    expect(anchorIn(text, { start: 4, end: 7, text: 'two' })).toEqual({ start: 4, end: 7 })
+    // text moved by two characters: the occurrence near the old start wins
+    expect(anchorIn('xx' + text, { start: 19, end: 22, text: 'two' })).toEqual({ start: 21, end: 24 })
+    expect(anchorIn(text, { start: 0, end: 3, text: 'missing' })).toBeNull()
   })
 })

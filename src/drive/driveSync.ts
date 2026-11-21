@@ -112,6 +112,7 @@ export function summarize(books: BookSyncResult, merged: MergeStats | null): str
     merged?.added && plural(merged.added, 'neues Wort', 'neue Wörter'),
     merged?.updated && plural(merged.updated, 'Wort aktualisiert', 'Wörter aktualisiert'),
     merged?.removed && plural(merged.removed, 'Wort gelöscht', 'Wörter gelöscht'),
+    merged?.highlights && plural(merged.highlights, 'Markierung abgeglichen', 'Markierungen abgeglichen'),
   ].filter(Boolean)
   return parts.length ? parts.join(', ') : 'alles aktuell'
 }

@@ -1,6 +1,8 @@
 // Finds the tapped or selected word and its sentence inside a book document
 // (an EPUB section or a PDF.js text layer, both rendered by foliate-js in iframes).
+import type { HighlightColor } from '../db/schema'
 import { findSentence, normalizeWord, PARAGRAPH_BREAK, wordAt } from '../nlp/sentence'
+import { createGestureTracker, type ReaderMode, type TouchSample } from './modes'
 
 const BLOCK = new Set([
   'p', 'div', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'td', 'th', 'dd', 'dt',
@@ -101,7 +103,7 @@ function caretAt(doc: Document, x: number, y: number): { node: Node; offset: num
   return null
 }
 
-function rangeContainsPoint(range: Range, x: number, y: number, slack = 3): boolean {
+export function rangeContainsPoint(range: Range, x: number, y: number, slack = 3): boolean {
   for (const r of range.getClientRects())
     if (x >= r.left - slack && x <= r.right + slack && y >= r.top - slack && y <= r.bottom + slack) return true
   return false
@@ -127,7 +129,11 @@ const MAX_WORDS = 6
 export function hitFromSelection(doc: Document): LookupHit | null {
   const sel = doc.getSelection()
   if (!sel || sel.isCollapsed || !sel.rangeCount) return null
-  const selRange = sel.getRangeAt(0)
+  return hitFromRange(sel.getRangeAt(0))
+}
+
+/** A range (selection or mark) as lookup target, widened to whole words; null if empty or too long. */
+export function hitFromRange(selRange: Range): LookupHit | null {
   const raw = normalizeWord(selRange.toString())
   if (!raw || raw.split(/\s+/).length > MAX_WORDS || raw.length > 80) return null
   const bt = buildBlockText(blockOf(selRange.startContainer))
@@ -144,13 +150,70 @@ export function hitFromSelection(doc: Document): LookupHit | null {
   return { surface, sentence: findSentence(bt.text, start).sentence, range }
 }
 
-const HIGHLIGHT = 'vr-lookup'
+/** A passage to mark: offsets in the text of the whole section (buildBlockText(doc.body)). */
+export interface MarkSpan {
+  start: number
+  end: number
+  /** exactly bodyText.slice(start, end) */
+  text: string
+  range: Range
+}
+
+/** The word at `pos`, segmenting only a window around it (section texts are long). */
+function wordNear(text: string, pos: number) {
+  const from = Math.max(0, pos - 80)
+  const w = wordAt(text.slice(from, pos + 80), pos - from)
+  return w && { start: w.start + from, end: w.end + from }
+}
+
+/** Offsets of a DOM range in the section text, widened to whole words; null if empty. */
+export function markFromRange(doc: Document, range: Range): MarkSpan | null {
+  if (!doc.body) return null
+  const bt = buildBlockText(doc.body)
+  let start = offsetOf(bt, range.startContainer, range.startOffset)
+  let end = offsetOf(bt, range.endContainer, range.endOffset)
+  if (start === null) return null
+  if (end === null || end <= start) end = start + range.toString().length
+  // leading/trailing whitespace is not part of the mark
+  while (start < end && /[\s\u2029]/.test(bt.text[start])) start++
+  while (end > start && /[\s\u2029]/.test(bt.text[end - 1])) end--
+  if (end <= start) return null
+  const first = wordNear(bt.text, start)
+  const last = wordNear(bt.text, end - 1)
+  if (first && first.start <= start && first.end > start) start = first.start
+  if (last && last.start < end && last.end >= end) end = last.end
+  const r = rangeFromOffsets(bt, start, end)
+  if (!r) return null
+  return { start, end, text: bt.text.slice(start, end), range: r }
+}
+
+/** The current selection as a passage to mark (any length, across paragraphs). */
+export function markFromSelection(doc: Document): MarkSpan | null {
+  const sel = doc.getSelection()
+  if (!sel || sel.isCollapsed || !sel.rangeCount) return null
+  return markFromRange(doc, sel.getRangeAt(0))
+}
+
+const LOOKUP = 'vr-lookup'
+
+/** background per mark color; the CSS highlight is named vr-hl-<color> (highlights.ts) */
+export const HIGHLIGHT_CSS: Record<HighlightColor, string> = {
+  yellow: 'rgba(255, 213, 0, 0.42)',
+  green: 'rgba(80, 200, 90, 0.36)',
+  blue: 'rgba(70, 150, 255, 0.34)',
+  pink: 'rgba(255, 90, 170, 0.32)',
+}
 
 export function prepareDocument(doc: Document) {
   if (doc.getElementById('vr-style')) return
   const style = doc.createElement('style')
   style.id = 'vr-style'
-  style.textContent = `::highlight(${HIGHLIGHT}) { background-color: rgba(255, 196, 0, 0.45); }`
+  style.textContent = [
+    ...Object.entries(HIGHLIGHT_CSS).map(([c, bg]) => `::highlight(vr-hl-${c}) { background-color: ${bg}; }`),
+    '::highlight(vr-hl-note) { text-decoration: underline dotted 2px; text-underline-offset: 3px; }',
+    // after the marks, so the word being looked up stands out on top of them
+    `::highlight(${LOOKUP}) { background-color: rgba(255, 160, 0, 0.55); }`,
+  ].join('\n')
   ;(doc.head ?? doc.documentElement).append(style)
 }
 
@@ -158,33 +221,88 @@ export function markRange(doc: Document, range: Range | null) {
   const win = doc.defaultView as (Window & typeof globalThis) | null
   const registry = win?.CSS?.highlights
   if (!registry || !win?.Highlight) return
-  if (range) registry.set(HIGHLIGHT, new win.Highlight(range))
-  else registry.delete(HIGHLIGHT)
+  if (range) registry.set(LOOKUP, new win.Highlight(range))
+  else registry.delete(LOOKUP)
 }
 
-/** Tap/click on a word or select a phrase → onHit. */
-export function attachLookupHandlers(doc: Document, onHit: (hit: LookupHit) => void) {
+export interface ReaderHandlers {
+  mode(): ReaderMode
+  /** translate mode: tapped word or selected phrase */
+  onLookup(hit: LookupHit): void
+  /** mark mode: tapped word that is not marked yet */
+  onMarkWord(hit: LookupHit): void
+  /** mark mode: there is a selection (called again while it changes) */
+  onMarkSelection(): void
+  /** mark mode: tap on a mark; returns false if there is none at that point */
+  onTapMark(x: number, y: number): boolean
+  /** read mode: tap; x in the coordinates of the app window */
+  onTap(x: number): void
+  /** two-finger tap */
+  onCycleMode(): void
+}
+
+const touchSample = (e: TouchEvent): TouchSample => ({
+  touches: e.touches.length,
+  points: Array.from(e.changedTouches, t => ({ id: t.identifier, x: t.clientX, y: t.clientY })),
+  t: e.timeStamp,
+})
+
+/** x of a point in the book frame, in the coordinates of the app window */
+function outerX(doc: Document, x: number): number {
+  const win = doc.defaultView
+  const frame = win?.frameElement?.getBoundingClientRect()
+  if (!win || !frame) return x
+  return frame.left + x * (win.innerWidth ? frame.width / win.innerWidth : 1)
+}
+
+/** Taps, selections and two-finger taps in a book document, dispatched by the reader mode. */
+export function attachReaderHandlers(doc: Document, h: ReaderHandlers) {
   let down: { x: number; y: number; t: number } | null = null
   let selTimer: ReturnType<typeof setTimeout> | undefined
+  const gesture = createGestureTracker()
+  const opts = { passive: true }
+  doc.addEventListener('touchstart', e => gesture.start(touchSample(e)), opts)
+  doc.addEventListener('touchmove', e => gesture.move(touchSample(e)), opts)
+  const onTouchEnd = (e: TouchEvent) => {
+    if (gesture.end(touchSample(e))) {
+      doc.getSelection()?.removeAllRanges()
+      h.onCycleMode()
+    }
+  }
+  doc.addEventListener('touchend', onTouchEnd, opts)
+  doc.addEventListener('touchcancel', onTouchEnd, opts)
+
   doc.addEventListener('pointerdown', e => {
     down = { x: e.clientX, y: e.clientY, t: e.timeStamp }
   })
   doc.addEventListener('pointerup', e => {
     const start = down
     down = null
-    if (e.button !== 0) return
+    if (e.button !== 0 || gesture.multi(e.timeStamp)) return
     if ((e.target as Element | null)?.closest?.('a[href]')) return
     setTimeout(() => {
-      const sel = hitFromSelection(doc)
-      if (sel) {
+      const mode = h.mode()
+      const selected = doc.getSelection()
+      const hasSelection = !!selected && !selected.isCollapsed && selected.toString().trim() !== ''
+      if (mode === 'translate') {
+        const sel = hitFromSelection(doc)
+        if (sel) {
+          clearTimeout(selTimer)
+          return h.onLookup(sel)
+        }
+      } else if (mode === 'mark' && hasSelection) {
         clearTimeout(selTimer)
-        return onHit(sel)
+        return h.onMarkSelection()
       }
-      if (!start) return
+      if (!start || hasSelection) return
       const moved = Math.hypot(e.clientX - start.x, e.clientY - start.y)
       if (moved > 8 || e.timeStamp - start.t > 600) return
+      if (mode === 'read') return h.onTap(outerX(doc, e.clientX))
+      if (mode === 'mark' && h.onTapMark(e.clientX, e.clientY)) return
       const hit = hitFromPoint(doc, e.clientX, e.clientY)
-      if (hit) onHit(hit)
+      if (!hit) return
+      if (mode === 'mark') h.onMarkWord(hit)
+      else h.onLookup(hit)
     }, 10)
   })
   // long-press selection on touch screens ends without a usable pointerup
@@ -192,8 +310,11 @@ export function attachLookupHandlers(doc: Document, onHit: (hit: LookupHit) => v
     clearTimeout(selTimer)
     selTimer = setTimeout(() => {
       if (down) return
-      const sel = hitFromSelection(doc)
-      if (sel) onHit(sel)
+      const mode = h.mode()
+      if (mode === 'translate') {
+        const sel = hitFromSelection(doc)
+        if (sel) h.onLookup(sel)
+      } else if (mode === 'mark' && markFromSelection(doc)) h.onMarkSelection()
     }, 700)
   })
 }

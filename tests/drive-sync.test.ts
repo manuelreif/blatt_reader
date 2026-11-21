@@ -182,8 +182,11 @@ describe('syncDrive (two devices)', () => {
 describe('summarize', () => {
   it('says what changed', () => {
     expect(summarize({ imported: 0, failed: 0 }, null)).toBe('alles aktuell')
-    expect(summarize({ imported: 2, failed: 0 }, { terms: 9, added: 3, updated: 1, removed: 2 })).toBe(
+    expect(summarize({ imported: 2, failed: 0 }, { terms: 9, added: 3, updated: 1, removed: 2, highlights: 0 })).toBe(
       '2 neue Bücher, 3 neue Wörter, 1 Wort aktualisiert, 2 Wörter gelöscht',
+    )
+    expect(summarize({ imported: 0, failed: 0 }, { terms: 9, added: 0, updated: 0, removed: 0, highlights: 1 })).toBe(
+      '1 Markierung abgeglichen',
     )
   })
 })

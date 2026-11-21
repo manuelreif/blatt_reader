@@ -4,6 +4,7 @@ import {
   STATUS_KNOWN,
   type CardRow,
   type Context,
+  type Highlight,
   type ReviewLogRow,
   type Setting,
   type Term,
@@ -74,6 +75,8 @@ export interface Backup {
   tombstones?: Tombstone[]
   /** reading positions (optional: older backups lack it) */
   bookProgress?: BookProgress[]
+  /** marks in books, deleted ones included (optional: older backups lack it) */
+  highlights?: Highlight[]
 }
 
 export async function backupJson(): Promise<string> {
@@ -93,6 +96,7 @@ export async function backupJson(): Promise<string> {
     settings: (await db.settings.toArray()).filter(s => !LOCAL_SETTING_KEYS.has(s.key)),
     tombstones: await db.tombstones.toArray(),
     bookProgress,
+    highlights: await db.highlights.toArray(),
   }
   return JSON.stringify(backup)
 }
@@ -118,6 +122,8 @@ export interface MergeStats {
   updated: number
   /** words removed because they were deleted elsewhere */
   removed: number
+  /** marks new or changed on this device */
+  highlights: number
 }
 
 const reviveCard = (c: CardRow): CardRow => ({
@@ -138,8 +144,8 @@ const isNewerCard = (a: CardRow, b: CardRow) =>
  * Books are not part of backups, only their reading positions.
  */
 export async function mergeBackup(data: Partial<Backup> & { terms: Term[] }, opts: { settings?: boolean } = {}): Promise<MergeStats> {
-  const stats: MergeStats = { terms: data.terms.length, added: 0, updated: 0, removed: 0 }
-  const tables = [db.terms, db.contexts, db.cards, db.reviewLogs, db.settings, db.tombstones, db.books]
+  const stats: MergeStats = { terms: data.terms.length, added: 0, updated: 0, removed: 0, highlights: 0 }
+  const tables = [db.terms, db.contexts, db.cards, db.reviewLogs, db.settings, db.tombstones, db.books, db.highlights]
   await db.transaction('rw', tables, async () => {
     // deletions from both sides; the later one counts
     const deletedAt = new Map((await db.tombstones.toArray()).map(t => [t.id, t.at]))
@@ -214,6 +220,17 @@ export async function mergeBackup(data: Partial<Backup> & { terms: Term[] }, opt
       const book = await db.books.get(p.id)
       if (book && p.lastLocation && p.progressAt > (book.progressAt ?? 0))
         await db.books.update(p.id, { lastLocation: p.lastLocation, progress: p.progress, progressAt: p.progressAt })
+    }
+
+    // marks: the later change wins (a deletion is a change, the row stays with `deleted`)
+    if (data.highlights?.length) {
+      const mine = new Map((await db.highlights.toArray()).map(h => [h.id, h]))
+      const winners = data.highlights.filter(h => {
+        const m = mine.get(h.id)
+        return !m || h.updatedAt > m.updatedAt
+      })
+      stats.highlights = winners.filter(h => !h.deleted || mine.has(h.id)).length
+      await db.highlights.bulkPut(winners)
     }
 
     if (opts.settings !== false && data.settings) await db.settings.bulkPut(data.settings.filter(s => !LOCAL_SETTING_KEYS.has(s.key)))

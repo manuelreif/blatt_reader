@@ -151,6 +151,83 @@ test('EPUB: selecting a phrase looks up the phrase', async ({ page }) => {
   await expect(sheet).toContainText('Grundform: give up')
 })
 
+/** How many ranges the CSS highlight `name` has in the book frame (0 if none). */
+const highlightSize = (frame: Frame, name: string) =>
+  frame.evaluate(n => (CSS as unknown as { highlights: Map<string, Set<Range>> }).highlights.get(n)?.size ?? 0, name)
+
+test('EPUB: reader modes – read mode looks nothing up, marks are kept with color and note', async ({ page }) => {
+  await page.setInputFiles('[data-testid=book-input]', fixture('sample.epub'))
+  let frame = await bookFrame(page, 'splendid')
+  const modeSwitch = page.getByTestId('mode-switch')
+  await expect(modeSwitch).toContainText('Übersetzen')
+
+  // read mode: a tap on a word does not open the lookup
+  await page.keyboard.press('l')
+  await expect(modeSwitch).toContainText('Lesen')
+  await expect(page.getByTestId('mode-toast')).toContainText('Modus: 📖 Lesen')
+  await clickWord(page, frame, 'splendid')
+  await page.waitForTimeout(400)
+  await expect(page.getByTestId('lookup-sheet')).toHaveCount(0)
+
+  // mark mode: a tap marks the word at once
+  await modeSwitch.click() // read → translate
+  await modeSwitch.click() // translate → mark
+  await expect(modeSwitch).toContainText('Markieren')
+  await clickWord(page, frame, 'splendid')
+  const sheet = page.getByTestId('mark-sheet')
+  await expect(sheet).toContainText('splendid')
+  await expect.poll(() => highlightSize(frame, 'vr-hl-yellow')).toBe(1)
+  await sheet.getByRole('button', { name: 'Grün' }).click()
+  await expect.poll(() => highlightSize(frame, 'vr-hl-green')).toBe(1)
+  expect(await highlightSize(frame, 'vr-hl-yellow')).toBe(0)
+  await sheet.getByTestId('mark-note').fill('schönes Wort')
+  await sheet.getByTitle('Schließen (Esc)').click()
+  await expect(sheet).toHaveCount(0)
+
+  // a selection over two paragraphs waits for a color
+  await frame.evaluate(() => {
+    const a = document.getElementById('p2')!.firstChild as Text
+    const b = document.getElementById('p3')!.firstChild as Text
+    const r = document.createRange()
+    r.setStart(a, a.data.indexOf('unbiased'))
+    r.setEnd(b, 'She looked'.length)
+    document.getSelection()!.removeAllRanges()
+    document.getSelection()!.addRange(r)
+  })
+  await expect(sheet).toContainText('Farbe antippen')
+  await sheet.getByRole('button', { name: 'Blau' }).click()
+  await expect.poll(() => highlightSize(frame, 'vr-hl-blue')).toBe(1)
+
+  // after a reload: mode and marks are still there, the list shows them in reading order
+  await page.reload()
+  frame = await bookFrame(page, 'splendid')
+  await expect(modeSwitch).toContainText('Markieren')
+  await expect.poll(() => highlightSize(frame, 'vr-hl-green')).toBe(1)
+  await expect.poll(() => highlightSize(frame, 'vr-hl-note')).toBe(1)
+  await page.getByTestId('mark-list-button').click()
+  const list = page.getByTestId('mark-list')
+  await expect(list.locator('.mark-item')).toHaveCount(2)
+  await expect(list.locator('.mark-item').first()).toContainText('splendid')
+  await expect(list.locator('.mark-item').first()).toContainText('schönes Wort')
+  await expect(list.locator('.mark-item').nth(1)).toContainText('unbiased estimator was surprisingly reliable. She looked')
+
+  // tapping a mark opens it; deleting removes it
+  await list.locator('.mark-item').nth(1).click()
+  await expect(sheet.getByTestId('mark-note')).toHaveValue('')
+  await sheet.getByRole('button', { name: 'Löschen' }).click()
+  await expect.poll(() => highlightSize(frame, 'vr-hl-blue')).toBe(0)
+  await clickWord(page, frame, 'splendid')
+  await expect(sheet.getByTestId('mark-note')).toHaveValue('schönes Wort')
+  await sheet.getByRole('button', { name: 'Nachschlagen' }).click()
+  await expect(page.getByTestId('lookup-sheet')).toContainText('splendid')
+
+  // translate mode: a tap on a marked word looks it up as before
+  await page.keyboard.press('Escape')
+  await page.keyboard.press('u')
+  await clickWord(page, frame, 'splendid')
+  await expect(page.getByTestId('lookup-sheet')).toContainText('splendid')
+})
+
 test('PDF: a word hyphenated across lines is joined', async ({ page }) => {
   await page.setInputFiles('[data-testid=book-input]', fixture('sample.pdf'))
   await expect(page).toHaveURL(/#\/read\//)
@@ -160,6 +237,18 @@ test('PDF: a word hyphenated across lines is joined', async ({ page }) => {
   await expect(sheet).toContainText('statistical')
   await expect(sheet).toContainText('We fit a statistical model to the survey data.')
   await expect(page.getByTestId('translation-input')).toHaveValue('statistisch')
+})
+
+test('PDF: a mark is drawn on the text layer and comes back after a reload', async ({ page }) => {
+  await page.setInputFiles('[data-testid=book-input]', fixture('sample.pdf'))
+  let frame = await bookFrame(page, 'tical model')
+  await page.keyboard.press('m')
+  await clickWord(page, frame, 'survey')
+  await expect(page.getByTestId('mark-sheet')).toContainText('survey')
+  await expect.poll(() => highlightSize(frame, 'vr-hl-yellow')).toBe(1)
+  await page.reload()
+  frame = await bookFrame(page, 'tical model')
+  await expect.poll(() => highlightSize(frame, 'vr-hl-yellow')).toBe(1)
 })
 
 test('production build: scripts inside an EPUB are blocked by the CSP', async ({ page }) => {
@@ -327,9 +416,15 @@ test.describe('Google Drive (Google replaced by a stub)', () => {
     await expect(page.getByTestId('translation-input')).toHaveValue('Schätzer')
     await page.getByTestId('save-term').click()
     await expect(page.getByTestId('lookup-sheet')).toContainText('Neu in deinen Vokabeln')
+    // a mark goes along, too
+    await page.keyboard.press('Escape')
+    await page.keyboard.press('m')
+    await clickWord(page, frame, 'splendid')
+    await expect(page.getByTestId('mark-sheet')).toContainText('splendid')
     await page.goto('/#/settings')
     await page.getByRole('button', { name: 'Jetzt abgleichen' }).click()
     await expect.poll(syncedTerms).toEqual(['estimator', 'serendipity'])
+    expect((JSON.parse(fake.text(syncFile.id)).highlights as { text: string }[]).map(h => h.text)).toEqual(['splendid'])
 
     // removed from the library: not downloaded again, until asked for
     await page.goto('/')

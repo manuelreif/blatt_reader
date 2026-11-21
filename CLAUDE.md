@@ -20,7 +20,7 @@ Ablenker) durch Claude per Copy-Paste. Setup, Deploy und Bedienung: siehe `READM
 ```bash
 npm run dev            # Vite-Dev-Server inkl. /api/translate (Key aus .env)
 npm run typecheck
-npm test               # Vitest, 107 Tests
+npm test               # Vitest, 117 Tests
 npm run e2e            # Playwright gegen Dev-Server (Port 5179), erzeugt Fixtures selbst
 npm run build && E2E_PREVIEW=1 npm run e2e   # gegen Produktions-Build (Port 4179), inkl. CSP- und Passwort-Test
 npm run build:dict     # Ding laden (.cache/) → public/dict/en-de/*.json
@@ -34,7 +34,7 @@ Vor jedem Commit: `npm run typecheck && npm test && npm run e2e`.
 - Vite 8 + React 19 + TS (strict), Hash-Router in `src/router.ts`, keine UI-Bibliothek, CSS in `src/styles.css`
   (CSS-Variablen, Hell/Dunkel).
 - **Daten:** Dexie in `src/db/schema.ts` (DB `vokabel-reader`, Version 2: v1 + Tabellen `driveFiles`,
-  `tombstones`). Zugriff zentral über `src/db/repo.ts` (`saveLookup`, `recordReview`, `loadQuizSession` …).
+  `tombstones`; Version 3: + `highlights`). Zugriff zentral über `src/db/repo.ts` (`saveLookup`, `recordReview`, `loadQuizSession` …).
   Schema ändern = neue `this.version(n)` mit Upgrade, nie ältere Versionen umschreiben (Nutzerdaten liegen
   schon im Browser). Jede Änderung an einem Wort setzt `updatedAt` (auch `recordReview`), davon lebt der Sync.
 - **IDs:** `Term.id` = Lemma-Schlüssel (`termKey`), `CardRow.id` = `${termId}|${type}`,
@@ -67,6 +67,17 @@ Vor jedem Commit: `npm run typecheck && npm test && npm run e2e`.
   verfügbar“ (`lookupKey` → `null`, Popup zeigt Hinweis). `downloadDictionary` legt alles in den Cache
   `dict`, denselben, den der Service Worker für `/dict/` nutzt (Namen synchron halten). Ohne aktiven
   Service Worker (dev, erster Besuch) liest `fetchJson` offline direkt über `caches.match`.
+- **Reader-Modi** (`src/reader/modes.ts`): `read` / `translate` / `mark`, Setting `readerMode` (in
+  `LOCAL_SETTING_KEYS`, also pro Gerät). `attachReaderHandlers` in `selection.ts` verteilt Tippen/Auswahl nach Modus;
+  Zwei-Finger-Tipp über den reinen `createGestureTracker` (Taps der beteiligten Finger werden verworfen).
+  Lesemodus blättert per Drittel (`tapZone`, x über `frameElement` in Fensterkoordinaten umgerechnet).
+- **Markierungen** (`src/reader/highlights.ts`, Tabelle `highlights`): verankert über Offsets im Text von
+  `buildBlockText(doc.body)` der Sektion (PDF: Seite) plus `text`; passt der Text nicht mehr, gilt das nächste
+  Vorkommen. `cfi` nur zum Hinspringen. Gezeichnet mit der CSS Custom Highlight API (`vr-hl-<farbe>`,
+  `vr-hl-note`), **nicht** mit foliates Overlayer (den hat der PDF-Renderer nicht). Ein `MutationObserver` malt
+  neu, weil der PDF-Textlayer erst nach `load` (und bei jedem Zoom neu) entsteht. `renderer.getContents()` liefert
+  bei PDFs keinen Index, darum merkt sich `ReaderView` Dokument → Sektion selbst. Löschen = `deleted: true` +
+  `updatedAt` (kein Grabstein), `mergeBackup` nimmt je `id` das neuere `updatedAt`.
 - **Claude-Anreicherung:** `src/enrich/templates.ts` (Prompt + zod-Schema), `importResponse.ts`
   (JSON aus Antwort holen, abgeschnittene Arrays reparieren, pro Eintrag prüfen), `apply.ts`.
 - **Sicherung/Merge:** `src/vocab/export.ts`. `backupJson` (Format `version: 1`, optional `tombstones` und
@@ -147,12 +158,17 @@ DeepL für offline gespeicherte Wörter nachholen, Anzeige „dauerhafter Speich
 **Neu (21.11.2026):** Google-Drive-Abgleich: Bücherordner automatisch laden, Vokabeln/Lernstand/Lesefortschritt
 zwischen Geräten zusammenführen (Grabsteine für gelöschte Wörter), Merge auch beim manuellen Einspielen.
 
+**Neu (21.11.2026):** Reader-Modi Lesen/Übersetzen/Markieren (Knopf, Tasten l/u/m, Zwei-Finger-Tipp) und
+Markierungen mit Farben, Notizen und Liste pro Buch, mit Sicherung und Drive-Abgleich.
+
 **Neu (21.11.2026):** Quiz pro Buch (Auswahl im Quiz, Link in der Bibliothek), Buchfilter in der Vokabelliste.
 
 **Noch nie echt getestet** (nur simuliert bzw. mit generierten Fixtures):
 - Google Drive mit echtem Google: Login-Popup (auch in der installierten Android-PWA), Verhalten nach mehr als
   1 h, ob `alt=media`-Downloads auf eine andere Domain umleiten (dann in die CSP `connect-src`), ob Google im
   Status „Testen“ alle 7 Tage neu fragt
+- Zwei-Finger-Tipp und Markieren per Auswahl-Griffen auf einem echten Android-Tablet (nur Unit-Test des
+  Gesten-Automaten bzw. Desktop-Chrome)
 - Passwortschutz in der echten Cloudflare-Laufzeit (nur im Vite-Preview-Server getestet; lokal prüfbar
   mit `npx wrangler pages dev dist --binding APP_PASSWORD=…`)
 - echter Copy-Paste-Durchgang mit claude.ai
@@ -161,7 +177,8 @@ zwischen Geräten zusammenführen (Grabsteine für gelöschte Wörter), Merge au
 - Deploy auf Cloudflare Pages und Installation als PWA auf Android
 
 **Phase 2 (offen):**
-- gespeicherte Wörter im Text farbig markieren (CSS Custom Highlight API, Status-Farben wie LingQ)
+- gespeicherte Wörter im Text farbig markieren (CSS Custom Highlight API wie bei den Markierungen, Status-Farben
+  wie LingQ)
 - Quiz-Typen Multiple Choice (nutzt `distractors` von Claude, sonst Wörter gleicher Wortart),
   Eintippen mit Levenshtein-Toleranz
 - weitere Claude-Vorlagen (Quizrunde, Fachglossar pro Paper, Mini-Geschichte, „Satz erklären“)

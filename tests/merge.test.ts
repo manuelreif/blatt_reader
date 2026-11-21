@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { deleteTerm, recordReview, saveLookup, setTermStatus } from '../src/db/repo'
 import { db, type Book } from '../src/db/schema'
 import { Rating } from '../src/quiz/scheduler'
+import { addHighlight, bookHighlights, deleteHighlight } from '../src/reader/highlights'
 import { backupJson, mergeBackup, parseBackup, restoreBackup } from '../src/vocab/export'
 
 // One IndexedDB plays both devices: take a snapshot on "device A", reset, build "device B", merge.
@@ -182,6 +183,7 @@ describe('backup files', () => {
     const old = await snapshot()
     delete old.tombstones
     delete old.bookProgress
+    delete old.highlights
     await reset()
     expect(await restoreBackup(JSON.stringify(old))).toEqual({ terms: 1 })
     expect(await db.cards.count()).toBe(1)
@@ -190,5 +192,41 @@ describe('backup files', () => {
   it('are checked before anything is changed', async () => {
     await expect(restoreBackup('{"app":"other"}')).rejects.toThrow('Keine gültige Sicherungsdatei')
     await expect(restoreBackup('not json')).rejects.toThrow('Keine gültige Sicherungsdatei')
+  })
+})
+
+describe('marks', () => {
+  const mark = { bookId: 'b1', bookTitle: 'Testbuch', section: 2, start: 10, end: 20, text: 'some words', color: 'yellow' as const }
+
+  it('travel to the other device, the later change wins, a deletion stays', async () => {
+    const a = await addHighlight(mark)
+    const b = await addHighlight({ ...mark, start: 40, end: 45, text: 'other' })
+    const deviceA = await snapshot()
+
+    await reset()
+    expect(await mergeBackup(deviceA)).toMatchObject({ highlights: 2 })
+    expect((await bookHighlights('b1')).map(h => h.text)).toEqual(['some words', 'other'])
+
+    // device B: a newer note on a, deletes b
+    await db.highlights.update(a.id, { note: 'wichtig', updatedAt: a.updatedAt + 1000 })
+    await db.highlights.update(b.id, { deleted: true, updatedAt: b.updatedAt + 1000 })
+    const deviceB = await snapshot()
+
+    // back on device A (still the old state): B's changes win
+    await reset()
+    await mergeBackup(deviceA)
+    expect(await mergeBackup(deviceB)).toMatchObject({ highlights: 2 })
+    expect(await bookHighlights('b1')).toMatchObject([{ id: a.id, note: 'wichtig' }])
+
+    // merging the older state again changes nothing
+    expect(await mergeBackup(deviceA)).toMatchObject({ highlights: 0 })
+    expect(await bookHighlights('b1')).toHaveLength(1)
+  })
+
+  it('a mark deleted with deleteHighlight is soft deleted', async () => {
+    const a = await addHighlight(mark)
+    await deleteHighlight(a.id)
+    expect(await bookHighlights('b1')).toEqual([])
+    expect((await db.highlights.get(a.id))?.deleted).toBe(true)
   })
 })
