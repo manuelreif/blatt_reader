@@ -1,6 +1,6 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useMemo, useState } from 'react'
-import { deleteTerm, setTermStatus, updateTerm } from '../db/repo'
+import { booksWithWords, deleteTerm, setTermStatus, updateTerm } from '../db/repo'
 import { db, STATUS_IGNORED, STATUS_KNOWN, type Term } from '../db/schema'
 import { href, navigate } from '../router'
 import { useSettings } from '../settings/settings'
@@ -125,7 +125,7 @@ function TermDetail({ id }: { id: string }) {
             </p>
             <span className="muted">
               {c.bookTitle}
-              {c.translation ? ` · DeepL: ${c.translation}` : ''} ·{' '}
+              {c.deeplPending ? ' · DeepL wird nachgeholt' : c.translation ? ` · DeepL: ${c.translation}` : ''} ·{' '}
               <a href={href({ name: 'read', bookId: c.bookId, cfi: c.cfi })}>im Buch zeigen</a> ·{' '}
               <button className="link danger" onClick={() => c.id !== undefined && void db.contexts.delete(c.id)}>
                 entfernen
@@ -152,7 +152,10 @@ function TermDetail({ id }: { id: string }) {
 export function VocabView({ termId }: { termId?: string }) {
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState<Filter>('all')
+  const [bookId, setBookId] = useState('')
   const terms = useLiveQuery(() => db.terms.orderBy('createdAt').reverse().toArray(), [])
+  const books = useLiveQuery(() => booksWithWords(), [])
+  const book = books?.find(b => b.bookId === bookId)
   const contextCounts = useLiveQuery(async () => {
     const counts = new Map<string, number>()
     await db.contexts.each(c => counts.set(c.termId, (counts.get(c.termId) ?? 0) + 1))
@@ -162,9 +165,12 @@ export function VocabView({ termId }: { termId?: string }) {
     const f = FILTERS.find(x => x.id === filter)!
     const q = query.trim().toLowerCase()
     return (terms ?? []).filter(
-      t => f.test(t) && (!q || t.id.includes(q) || t.translation.toLowerCase().includes(q) || t.forms.some(x => x.includes(q))),
+      t =>
+        f.test(t) &&
+        (!book || book.termIds.has(t.id)) &&
+        (!q || t.id.includes(q) || t.translation.toLowerCase().includes(q) || t.forms.some(x => x.includes(q))),
     )
-  }, [terms, filter, query])
+  }, [terms, filter, query, book])
 
   return (
     <section className={`vocab ${termId ? 'has-detail' : ''}`}>
@@ -182,6 +188,16 @@ export function VocabView({ termId }: { termId?: string }) {
               </option>
             ))}
           </select>
+          {books && books.length > 1 && (
+            <select value={book ? bookId : ''} onChange={e => setBookId(e.target.value)} aria-label="Buch" className="book-filter">
+              <option value="">Alle Bücher</option>
+              {books.map(b => (
+                <option key={b.bookId} value={b.bookId}>
+                  {b.title}
+                </option>
+              ))}
+            </select>
+          )}
         </div>
         {terms && terms.length === 0 && (
           <p className="empty">Noch keine Vokabeln. Öffne ein Buch und tippe ein Wort an.</p>

@@ -1,6 +1,16 @@
 import 'fake-indexeddb/auto'
 import { beforeEach, describe, expect, it } from 'vitest'
-import { countDue, deleteTerm, loadQuizSession, recordReview, saveLookup, setTermStatus } from '../src/db/repo'
+import {
+  booksWithWords,
+  countDue,
+  deleteTerm,
+  loadQuizSession,
+  nextDueAt,
+  quizBooks,
+  recordReview,
+  saveLookup,
+  setTermStatus,
+} from '../src/db/repo'
 import { db, STATUS_IGNORED } from '../src/db/schema'
 import { Rating, type Grade } from '../src/quiz/scheduler'
 
@@ -83,5 +93,60 @@ describe('quiz', () => {
     expect(await db.terms.count()).toBe(0)
     expect(await db.contexts.count()).toBe(0)
     expect(await db.cards.count()).toBe(0)
+  })
+})
+
+describe('quiz per book', () => {
+  const other = { id: 'b2', title: 'Zweites Buch' }
+  const t0 = Date.now() - 10_000
+
+  async function twoBooks() {
+    await saveLookup({ ...base, now: t0 })
+    await saveLookup({ ...base, lemma: 'variance', surface: 'variance', sentence: 'The variance was large.', book: other, now: t0 + 1 })
+    // read in both books
+    await saveLookup({ ...base, lemma: 'mean', surface: 'mean', sentence: 'The mean moved.', now: t0 + 2 })
+    await saveLookup({ ...base, lemma: 'mean', surface: 'mean', sentence: 'We report the mean.', book: other, now: t0 + 3 })
+  }
+
+  it('asks only the words saved from the chosen book', async () => {
+    await twoBooks()
+    const b1 = await loadQuizSession({ limit: 20, newPerDay: 20, bookId: 'b1' })
+    expect(new Set(b1.map(i => i.term.id))).toEqual(new Set(['estimator', 'mean']))
+    const b2 = await loadQuizSession({ limit: 20, newPerDay: 20, bookId: 'b2' })
+    expect(new Set(b2.map(i => i.term.id))).toEqual(new Set(['variance', 'mean']))
+    // the sentence comes from the chosen book
+    expect(b2.filter(i => i.term.id === 'mean').every(i => i.context?.bookId === 'b2')).toBe(true)
+    expect(await loadQuizSession({ limit: 20, newPerDay: 20 })).toHaveLength(6)
+    expect(await loadQuizSession({ limit: 20, newPerDay: 20, bookId: 'nope' })).toHaveLength(0)
+    expect(await countDue(new Date(), 'b2')).toBe(4)
+  })
+
+  it('shares the learning state and the daily limit between the quizzes', async () => {
+    await twoBooks()
+    const b1 = await loadQuizSession({ limit: 20, newPerDay: 3, bookId: 'b1' })
+    expect(b1).toHaveLength(3)
+    for (const i of b1) await recordReview(i.card, Rating.Good as Grade)
+    // the daily limit is used up, also for the other book
+    expect(await loadQuizSession({ limit: 20, newPerDay: 3, bookId: 'b2' })).toHaveLength(0)
+    // a card of "mean" learned through book 1 is no longer due in book 2
+    const b2 = await loadQuizSession({ limit: 20, newPerDay: 20, bookId: 'b2' })
+    const learned = new Set(b1.map(i => i.card.id))
+    expect(b2.some(i => learned.has(i.card.id))).toBe(false)
+  })
+
+  it('lists the books with their due cards and the next due date', async () => {
+    await twoBooks()
+    await saveLookup({ ...base, lemma: 'Holmes', surface: 'Holmes', sentence: 'Holmes smiled.', book: { id: 'b3', title: 'Nur Namen' }, status: STATUS_IGNORED, now: t0 + 4 })
+    expect((await booksWithWords()).map(b => b.bookId)).toEqual(['b3', 'b2', 'b1'])
+    expect(await quizBooks()).toEqual([
+      { bookId: 'b2', title: 'Zweites Buch', terms: 2, due: 4 },
+      { bookId: 'b1', title: 'Testbuch', terms: 2, due: 4 },
+    ])
+    for (const i of await loadQuizSession({ limit: 20, newPerDay: 20, bookId: 'b2' })) await recordReview(i.card, Rating.Easy as Grade)
+    expect((await quizBooks()).find(b => b.bookId === 'b2')?.due).toBe(0)
+    expect((await quizBooks()).find(b => b.bookId === 'b1')?.due).toBe(2)
+    expect(await nextDueAt('b2')).toBeGreaterThan(Date.now())
+    expect(await nextDueAt('b1')).toBeLessThanOrEqual(Date.now())
+    expect(await nextDueAt('b3')).toBeNull()
   })
 })

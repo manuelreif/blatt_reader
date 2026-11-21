@@ -107,13 +107,15 @@ async function main() {
   let bytes = 0
   for (const [shard, obj] of shards) {
     const json = JSON.stringify(obj)
-    bytes += json.length
+    bytes += Buffer.byteLength(json)
     writeFileSync(join(outDir, `${shard}.json`), json)
   }
   const index = {
     source: 'Ding de-en 1.9, Frank Richter, TU Chemnitz — https://dict.tu-chemnitz.de/',
     license: 'GPL-2.0-or-later',
     entries: map.size,
+    /** total size of all shards, shown before the offline download */
+    bytes,
     shards: [...shards.keys()].sort(),
   }
   writeFileSync(join(outDir, 'index.json'), JSON.stringify(index))

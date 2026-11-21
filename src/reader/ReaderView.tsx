@@ -94,12 +94,21 @@ export function ReaderView({ bookId, cfi }: { bookId: string; cfi?: string }) {
           attachLookupHandlers(doc, h => onHit(doc, index, h))
           doc.addEventListener('keydown', onKey)
         })
+        // progressAt only when the position really moved: merely opening the book on a
+        // second device must not beat the position synced from the first one
+        let savedCfi = b.lastLocation
         view.addEventListener('relocate', e => {
           const detail = (e as CustomEvent<RelocateDetail>).detail
           setLoc(detail)
           clearTimeout(saveTimer)
           saveTimer = setTimeout(() => {
-            void db.books.update(bookId, { lastLocation: detail.cfi, progress: detail.fraction ?? 0 })
+            const moved = detail.cfi !== savedCfi
+            savedCfi = detail.cfi
+            void db.books.update(bookId, {
+              lastLocation: detail.cfi,
+              progress: detail.fraction ?? 0,
+              ...(moved ? { progressAt: Date.now() } : {}),
+            })
           }, 600)
         })
         await view.open(parsed)

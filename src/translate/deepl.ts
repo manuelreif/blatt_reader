@@ -8,7 +8,15 @@ export interface DeeplResult {
   cached?: boolean
 }
 
-export class TranslateError extends Error {}
+export class TranslateError extends Error {
+  constructor(
+    message: string,
+    /** the password gate rejected the request: the user has to log in again */
+    readonly login = false,
+  ) {
+    super(message)
+  }
+}
 
 const inFlight = new Map<string, Promise<DeeplResult>>()
 
@@ -43,8 +51,14 @@ async function requestTranslation(key: string, text: string, context: string, fe
   } catch {
     throw new TranslateError('Keine Verbindung zum Übersetzungsdienst (offline?)')
   }
-  const data = (await res.json().catch(() => ({}))) as { translation?: string; error?: string; billedCharacters?: number }
-  if (!res.ok || !data.translation) throw new TranslateError(data.error ?? `Übersetzung fehlgeschlagen (${res.status})`)
+  const data = (await res.json().catch(() => ({}))) as {
+    translation?: string
+    error?: string
+    billedCharacters?: number
+    login?: string
+  }
+  if (!res.ok || !data.translation)
+    throw new TranslateError(data.error ?? `Übersetzung fehlgeschlagen (${res.status})`, res.status === 401 && !!data.login)
   await db.translationCache.put({ key, translation: data.translation, createdAt: Date.now() })
   return { translation: data.translation, billedCharacters: data.billedCharacters }
 }

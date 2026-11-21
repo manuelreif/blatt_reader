@@ -20,9 +20,9 @@ Ablenker) durch Claude per Copy-Paste. Setup, Deploy und Bedienung: siehe `READM
 ```bash
 npm run dev            # Vite-Dev-Server inkl. /api/translate (Key aus .env)
 npm run typecheck
-npm test               # Vitest, 57 Tests
+npm test               # Vitest, 106 Tests
 npm run e2e            # Playwright gegen Dev-Server (Port 5179), erzeugt Fixtures selbst
-npm run build && E2E_PREVIEW=1 npm run e2e   # gegen Produktions-Build (Port 4179), inkl. CSP-Test
+npm run build && E2E_PREVIEW=1 npm run e2e   # gegen Produktions-Build (Port 4179), inkl. CSP- und Passwort-Test
 npm run build:dict     # Ding laden (.cache/) → public/dict/en-de/*.json
 node scripts/make-icons.mjs                 # PWA-Icons neu erzeugen
 ```
@@ -33,14 +33,16 @@ Vor jedem Commit: `npm run typecheck && npm test && npm run e2e`.
 
 - Vite 8 + React 19 + TS (strict), Hash-Router in `src/router.ts`, keine UI-Bibliothek, CSS in `src/styles.css`
   (CSS-Variablen, Hell/Dunkel).
-- **Daten:** Dexie in `src/db/schema.ts` (DB `vokabel-reader`, Version 1). Zugriff zentral über
-  `src/db/repo.ts` (`saveLookup`, `recordReview`, `loadQuizSession` …). Schema ändern = neue
-  `this.version(n)` mit Upgrade, nie Version 1 umschreiben (Nutzerdaten liegen schon im Browser).
+- **Daten:** Dexie in `src/db/schema.ts` (DB `vokabel-reader`, Version 2: v1 + Tabellen `driveFiles`,
+  `tombstones`). Zugriff zentral über `src/db/repo.ts` (`saveLookup`, `recordReview`, `loadQuizSession` …).
+  Schema ändern = neue `this.version(n)` mit Upgrade, nie ältere Versionen umschreiben (Nutzerdaten liegen
+  schon im Browser). Jede Änderung an einem Wort setzt `updatedAt` (auch `recordReview`), davon lebt der Sync.
 - **IDs:** `Term.id` = Lemma-Schlüssel (`termKey`), `CardRow.id` = `${termId}|${type}`,
   `Book.id` = `fileId()` aus Größe und den ersten/letzten 256 KB (absichtlich ohne `crypto.subtle`,
   das fehlt über plain http im LAN).
 - **Einstellungen** liegen in `db.settings` (`src/settings/settings.ts`); der offene Anreicherungs-Durchgang
-  unter dem Schlüssel `enrichBatch`.
+  unter dem Schlüssel `enrichBatch`, die Drive-Verbindung unter `drive`. Beide stehen in `LOCAL_SETTING_KEYS`:
+  nie in einer Sicherung, nie von einer überschrieben.
 - **Nachschlagen:** `src/reader/selection.ts` findet Wort und Satz unter Finger/Maus
   (`caretPositionFromPoint`, `Intl.Segmenter`, Blocktext mit ` ` als Absatzgrenze, Silbentrennung
   über Zeilen hinweg). `src/lookup/LookupSheet.tsx` fragt Wörterbuch und DeepL parallel ab.
@@ -51,10 +53,45 @@ Vor jedem Commit: `npm run typecheck && npm test && npm run e2e`.
   `vite.config.ts`). Wort geht als `text`, Satz als `context` (wird nicht abgerechnet). Free-Keys enden
   auf `:fx` → `api-free.deepl.com`. Optionales `APP_TOKEN` als Header `x-app-token`.
   Client `src/translate/deepl.ts` cached in `translationCache` und fasst gleichzeitige gleiche Anfragen zusammen.
+  Scheitert DeepL beim Speichern, bekommt der Kontext `deeplPending: true` (kein Index, daher ohne
+  Schema-Version); `src/translate/pending.ts` holt das nach (App-Start, `online`-Event, nächster
+  erfolgreicher Lookup, Knopf in den Einstellungen) und ersetzt `Term.translation` nur, solange dort
+  noch der Wörterbuch-Ersatz von damals steht.
+- **Passwortschutz:** `server/auth.ts` (`authGate`), als Pages-Middleware `functions/_middleware.ts` vor
+  allen Anfragen und in `vite.config.ts` vor dev/preview. Aus, solange `APP_PASSWORD` fehlt. Cookie
+  `vr_session` = `v1.<ablauf>.<HMAC mit dem Passwort>`, 400 Tage, verlängert sich unter 200 Tagen Rest.
+  Seiten ohne Sitzung → 303 auf `/login`, alles andere → 401-JSON mit `login: '/login'` (Client zeigt
+  „Anmelden“-Link). Manifest und Icons bleiben öffentlich (Chrome holt das Manifest ohne Cookies).
+- **Wörterbuch:** `src/dict/dictionary.ts` lädt Shards nach Bedarf; `index.json` listet alle Shards, ein
+  Wort aus einem nicht gelisteten Shard ist also „kein Eintrag“, ein nicht ladbarer Shard „nicht
+  verfügbar“ (`lookupKey` → `null`, Popup zeigt Hinweis). `downloadDictionary` legt alles in den Cache
+  `dict`, denselben, den der Service Worker für `/dict/` nutzt (Namen synchron halten). Ohne aktiven
+  Service Worker (dev, erster Besuch) liest `fetchJson` offline direkt über `caches.match`.
 - **Claude-Anreicherung:** `src/enrich/templates.ts` (Prompt + zod-Schema), `importResponse.ts`
   (JSON aus Antwort holen, abgeschnittene Arrays reparieren, pro Eintrag prüfen), `apply.ts`.
+- **Sicherung/Merge:** `src/vocab/export.ts`. `backupJson` (Format `version: 1`, optional `tombstones` und
+  `bookProgress`), `mergeBackup` (neueres `updatedAt` gewinnt, Karte mit späterem `last_review` gewinnt,
+  Kontexte/Reviews vereinigt, Grabstein neuer als `updatedAt` → Wort samt Zeilen weg, `suspended` folgt dem
+  Status, Lesefortschritt nach `progressAt`). Auch „Sicherung einspielen“ läuft über `mergeBackup`.
+- **Google Drive** (`src/drive/`, optional, nur mit `VITE_GOOGLE_CLIENT_ID` beim Build):
+  - `googleAuth.ts`: Google Identity Services, Token-Modell, nur im Browser, kein Secret. Scopes
+    `drive.readonly` + `drive.file`. Token ca. 1 h in `localStorage` (`vr_google_token`), ein neues braucht
+    eine Nutzergeste (Popup).
+  - `driveApi.ts`: REST v3 mit injizierbarem `fetchImpl`. Uploads resumable (kein 5-MB-Limit).
+  - `driveSync.ts` (`syncDrive`): App-Ordner „Vokabel-Reader“ (gefunden über `appProperties.vokabelReader=root`,
+    gewählter Bücherordner in `appProperties.booksFolderId`) → `syncBooks.ts` (neue Drive-IDs herunterladen →
+    `importBook`; `driveFiles.state` `imported`/`dismissed`/`error`, `deleteBook` setzt `dismissed`) →
+    `syncVocab.ts` (`vokabel-reader-sync.json` laden, `mergeBackup` ohne Einstellungen, Stand hochladen).
+  - Läuft beim Start, bei `online`, nach einer Quizrunde und per Knopf. Ohne gültiges Token setzt ein
+    Hintergrundlauf nur `needsLogin`, dann zeigt `DriveBar` in der Bibliothek den Knopf.
 - **Quiz:** `src/quiz/scheduler.ts` (ts-fsrs, Retention 0.9, Fuzz an), Kartentypen `en-de`, `de-en`,
   `cloze`. Term-Status 1–5 ergibt sich aus der kleinsten Stabilität der Karten; 0 = ignoriert, 6 = bekannt.
+- **Quiz pro Buch:** Route `#/quiz/<bookId>`. Ein Wort gehört zu einem Buch, wenn es dort einen Kontext hat
+  (`termIdsForBook`, Index `contexts.bookId`, kein eigenes Feld, also kein Schema-Update). Nur ein Filter:
+  Karten, FSRS-Stand und Tageslimit für neue Karten bleiben gemeinsam. `quizBooks()` liefert Bücher mit
+  Wörtern im Quiz und fälligen Karten (Auswahl im Quiz, Link „Quiz · n fällig“ in der Bibliothek),
+  `booksWithWords()` den Buchfilter der Vokabelliste. Titel kommen aus den Kontexten, damit auch aus der
+  Bibliothek entfernte Bücher erscheinen. Wörter ohne Satz gehören zu keinem Buch, nur zu „Alle Bücher“.
 
 ## Stolperfallen (alle schon einmal passiert)
 
@@ -75,6 +112,23 @@ Vor jedem Commit: `npm run typecheck && npm test && npm run e2e`.
 - Unit-Tests laufen in `node`; DOM-Tests brauchen `// @vitest-environment jsdom` am Dateianfang,
   DB-Tests `fake-indexeddb/auto`.
 - Playwright-Browser einmalig: `npx playwright install chromium`.
+- `page.route('**/dict/**')` trifft im Dev-Modus auch `/src/dict/dictionary.ts`, die App startet dann
+  nicht. Muster wie `**/dict/en-de/**` nehmen.
+- Mit aktivem Service Worker sieht `page.route` dessen Anfragen nicht; Offline-Tests laufen deshalb mit
+  `test.use({ serviceWorkers: 'block' })`.
+- **Google-Popup nur nach einem Tippen:** `requestToken()` muss direkt im Klick-Handler starten. Darum lädt
+  `preloadGis()` das Google-Skript schon beim Anzeigen der Drive-Knöpfe. Google erlaubt als JavaScript-Quelle
+  nur https und `localhost`, keine LAN-IP.
+- `progressAt` nur setzen, wenn sich die Position wirklich bewegt (`ReaderView.tsx`), sonst schlägt bloßes
+  Öffnen auf Gerät B den echten Fortschritt von Gerät A.
+- Ein `Blob` als Request-Body ist für `page.route` unsichtbar (`postDataBuffer()` leer), darum schickt
+  `driveApi.ts` Uploads als ArrayBuffer. Der Drive-E2E-Test nutzt `tests/fake-drive.ts` (auch in den
+  Unit-Tests) und einen GIS-Stub. Er wird übersprungen, wenn der Build keine `VITE_GOOGLE_CLIENT_ID` hat:
+  für `E2E_PREVIEW=1` also mit `VITE_GOOGLE_CLIENT_ID=e2e-client.apps.googleusercontent.com npm run build`
+  bauen und danach **ohne** die Test-ID neu bauen, bevor deployt wird.
+- `/login` und `/logout` stehen in `navigateFallbackDenylist`, sonst beantwortet der Service Worker sie
+  mit der gecachten App und die Anmeldeseite erscheint nie. Der Preview-Server für E2E läuft mit
+  `APP_PASSWORD=e2e-password` (`playwright.config.ts`), die Tests melden sich in `beforeEach` an.
 
 ## Stand (21.11.2026)
 
@@ -84,8 +138,23 @@ Ignorieren, Auto-Speichern), Vokabelliste mit Detailansicht und „im Buch zeige
 FSRS-Quiz (EN→DE, DE→EN, Lückentext), Einstellungen, Backup/Restore, CSV-Export (Vokabeln und
 Review-Log für R), PWA mit Offline-Cache.
 
+**Echt getestet (21.11.2026):** DeepL-Free-Key in `.env` über `/api/translate`: „bank“ wird je nach
+Satz zu „Ufer“ bzw. „Bank“, abgerechnet werden nur 4 Zeichen (der Kontext zählt nicht).
+
+**Neu (21.11.2026):** Passwortschutz, Wörterbuch komplett offline speichern, Offline-Hinweis im Popup,
+DeepL für offline gespeicherte Wörter nachholen, Anzeige „dauerhafter Speicher“ in den Einstellungen.
+
+**Neu (21.11.2026):** Google-Drive-Abgleich: Bücherordner automatisch laden, Vokabeln/Lernstand/Lesefortschritt
+zwischen Geräten zusammenführen (Grabsteine für gelöschte Wörter), Merge auch beim manuellen Einspielen.
+
+**Neu (21.11.2026):** Quiz pro Buch (Auswahl im Quiz, Link in der Bibliothek), Buchfilter in der Vokabelliste.
+
 **Noch nie echt getestet** (nur simuliert bzw. mit generierten Fixtures):
-- echter DeepL-Key (es gibt noch kein `.env`), Abrechnung nur des Worts per `show_billed_characters` prüfen
+- Google Drive mit echtem Google: Login-Popup (auch in der installierten Android-PWA), Verhalten nach mehr als
+  1 h, ob `alt=media`-Downloads auf eine andere Domain umleiten (dann in die CSP `connect-src`), ob Google im
+  Status „Testen“ alle 7 Tage neu fragt
+- Passwortschutz in der echten Cloudflare-Laufzeit (nur im Vite-Preview-Server getestet; lokal prüfbar
+  mit `npx wrangler pages dev dist --binding APP_PASSWORD=…`)
 - echter Copy-Paste-Durchgang mit claude.ai
 - echtes zweispaltiges PDF-Paper (Phase-0-Entscheidung: foliate-js-PDF reicht vorerst; Ausweg wäre
   `pdfjs-dist` hinter einem Reader-Adapter)
@@ -98,6 +167,8 @@ Review-Log für R), PWA mit Offline-Cache.
 - weitere Claude-Vorlagen (Quizrunde, Fachglossar pro Paper, Mini-Geschichte, „Satz erklären“)
 - Dubletten zusammenführen, Anki-Export
 - Cloudflare-Deploy + Android
+- Drive: geänderte Dateien neu laden, Einstellungen mit Zeitstempel abgleichen, Abgleich ohne Tippen
+  (Refresh-Token über eine Server-Funktion)
 
 **Phase 3:** Statistik (Vergessenskurven, Serien), Kapitel-Vorschau (unbekannte Wörter vorab lernen),
 Schwierigkeitswert pro Buch, Sync (JSON/WebDAV), optionale kostenlose Live-KI.

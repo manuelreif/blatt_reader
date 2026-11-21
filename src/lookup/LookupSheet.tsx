@@ -5,7 +5,8 @@ import { db, STATUS_IGNORED } from '../db/schema'
 import { normalizeWord } from '../nlp/sentence'
 import { href } from '../router'
 import { useSettings } from '../settings/settings'
-import { translateInContext } from '../translate/deepl'
+import { translateInContext, type TranslateError } from '../translate/deepl'
+import { retryPendingTranslations } from '../translate/pending'
 import { Highlighted } from '../util/Highlighted'
 import { canSpeak, speak } from '../util/speech'
 import { lookupDictionary, plainSense, type DictResult, type LookupTarget } from './lookupService'
@@ -13,7 +14,7 @@ import { lookupDictionary, plainSense, type DictResult, type LookupTarget } from
 type DeeplState =
   | { state: 'loading' }
   | { state: 'ok'; text: string; cached?: boolean }
-  | { state: 'error'; message: string }
+  | { state: 'error'; message: string; login?: boolean }
 
 type SavedState = null | 'new' | 'context' | 'exists' | 'ignored'
 
@@ -57,8 +58,12 @@ export function LookupSheet({
       .then(r => !cancelled && setDict(r))
       .catch(() => !cancelled && setDict({ lemma: normalizeWord(target.surface).toLowerCase(), senses: [] }))
     translateInContext(target.surface, target.sentence)
-      .then(r => !cancelled && setDeepl({ state: 'ok', text: r.translation, cached: r.cached }))
-      .catch((e: Error) => !cancelled && setDeepl({ state: 'error', message: e.message }))
+      .then(r => {
+        if (!cancelled) setDeepl({ state: 'ok', text: r.translation, cached: r.cached })
+        // DeepL is reachable again: catch up on words saved while it was not
+        if (!r.cached) void retryPendingTranslations()
+      })
+      .catch((e: TranslateError) => !cancelled && setDeepl({ state: 'error', message: e.message, login: e.login }))
     return () => {
       cancelled = true
     }
@@ -73,6 +78,9 @@ export function LookupSheet({
 
   const ready = dict !== null && deepl.state !== 'loading'
 
+  // DeepL failed and the user kept the dictionary fallback: fetch DeepL later
+  const deeplPending = deepl.state === 'error' && !edited
+
   async function save(status?: number) {
     if (!dict) return
     const res = await saveLookup({
@@ -80,6 +88,7 @@ export function LookupSheet({
       surface: target.surface,
       sentence: target.sentence,
       translation: translation.trim() || undefined,
+      deeplPending: deeplPending && status !== STATUS_IGNORED,
       dictSenses: dict.senses,
       pos: dict.pos,
       book,
@@ -142,7 +151,17 @@ export function LookupSheet({
             }}
             placeholder="Übersetzung"
           />
-          {deepl.state === 'error' && <span className="warn">{deepl.message}</span>}
+          {deepl.state === 'error' && (
+            <span className="warn">
+              {deepl.message}
+              {deepl.login && (
+                <>
+                  {' '}
+                  · <a href="/login">Anmelden</a>
+                </>
+              )}
+            </span>
+          )}
         </label>
 
         {existing && existing.translation && existing.translation !== translation && (
@@ -179,13 +198,27 @@ export function LookupSheet({
             </ul>
           </div>
         )}
-        {dict && dict.senses.length === 0 && <p className="muted">Kein Eintrag im Offline-Wörterbuch.</p>}
+        {dict && dict.senses.length === 0 &&
+          (dict.unavailable ? (
+            <p className="warn" data-testid="dict-unavailable">
+              Dieser Teil des Wörterbuchs ist noch nicht offline gespeichert.{' '}
+              <a href={href({ name: 'settings' })}>Ganzes Wörterbuch speichern</a>
+            </p>
+          ) : (
+            <p className="muted">Kein Eintrag im Offline-Wörterbuch.</p>
+          ))}
       </div>
 
       <div className="sheet-actions">
         {saved ? (
           <span className="ok">
             {savedLabel[saved]} · <a href={href({ name: 'vocab', termId })}>ansehen</a>
+            {deeplPending && saved !== 'ignored' && saved !== 'exists' && (
+              <span className="muted" data-testid="deepl-pending">
+                {' '}
+                · DeepL wird nachgeholt, sobald es wieder erreichbar ist
+              </span>
+            )}
           </span>
         ) : (
           <>

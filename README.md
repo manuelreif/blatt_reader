@@ -14,6 +14,7 @@ Läuft als installierbare Web-App (PWA) am Linux-Desktop, auf Android und im Bro
 | [foliate-js](https://github.com/johnfactotum/foliate-js) (Git-Submodule in `public/foliate-js`) | EPUB/MOBI/FB2/CBZ/PDF anzeigen | MIT (PDF.js: Apache-2.0) |
 | Ding EN↔DE ([TU Chemnitz](https://dict.tu-chemnitz.de/)) | Offline-Wörterbuch, wird lokal erzeugt, nicht im Repo | GPL-2.0+ |
 | DeepL API Free | Übersetzung im Kontext (500.000 Zeichen/Monat gratis; der Kontext-Satz zählt nicht) | – |
+| Google Drive API (optional) | Bücherordner und Lernstand zwischen Geräten abgleichen (gratis, ohne Abrechnungskonto) | – |
 | ts-fsrs, Dexie, compromise, zod, React | Quiz-Planung, Datenbank, Grundformen, Prüfung der Claude-Antworten, Oberfläche | MIT / Apache-2.0 |
 
 ## Lokal starten
@@ -37,22 +38,92 @@ dafür die Online-Variante unten nehmen.
 
 DeepL blockiert Aufrufe direkt aus dem Browser. Darum läuft `/api/translate` als kleine
 Cloudflare Pages Function (`functions/api/translate.ts`), die den Key geheim hält.
+Davor sitzt ein Passwortschutz für die ganze App (`functions/_middleware.ts`).
 
 ```bash
 npx wrangler login
 npm run build:dict && npm run build
-npx wrangler pages deploy dist --project-name <projekt>
+npx wrangler pages deploy dist --project-name <projekt> --branch main
 npx wrangler pages secret put DEEPL_API_KEY --project-name <projekt>
-npx wrangler pages secret put APP_TOKEN --project-name <projekt>   # beliebiges langes Passwort
+npx wrangler pages secret put APP_PASSWORD --project-name <projekt>   # langes Passwort, z. B. vier Wörter
 ```
 
-`wrangler pages deploy` im Projektordner lädt den Ordner `functions/` automatisch mit hoch.
-Danach in der App unter **Einstellungen → App-Token** dasselbe Passwort eintragen und **DeepL testen**
-drücken. Ohne Token könnte jeder, der die Adresse kennt, dein DeepL-Kontingent verbrauchen.
+`wrangler pages deploy` im Projektordner lädt den Ordner `functions/` automatisch mit hoch. Secrets
+gelten erst nach dem nächsten Deploy, also danach noch einmal `wrangler pages deploy …` ausführen.
 
-**Auf Android installieren:** die `https://….pages.dev`-Adresse in Chrome öffnen → Menü →
-„App installieren“. Bücher und Vokabeln liegen pro Gerät im Browser-Speicher; mit
-**Einstellungen → Sicherung herunterladen / einspielen** überträgst du den Lernstand.
+**Passwortschutz:** Ist `APP_PASSWORD` gesetzt, liefert Cloudflare ohne Anmeldung nur eine
+Anmeldeseite aus, keine App, kein Wörterbuch und keine Übersetzung. Nach der Anmeldung bleibt das
+Gerät 400 Tage angemeldet; bei Benutzung verlängert sich das von selbst. Abmelden: `/logout` aufrufen.
+Ein neues Passwort meldet alle Geräte ab. Öffentlich bleiben nur Manifest und Icons, die Chrome zum
+Installieren braucht. Ohne `APP_PASSWORD` ist die App für jeden offen, der die Adresse kennt; dann
+wenigstens `APP_TOKEN` setzen (und in der App unter **Einstellungen → App-Token** eintragen), damit
+niemand dein DeepL-Kontingent verbraucht.
+
+Immer mit `--branch main` deployen: Andere Branches landen als Vorschau unter einer eigenen Adresse,
+und dort fehlen die Secrets, also auch der Passwortschutz.
+
+**Auf Android installieren:** die `https://…`-Adresse in Chrome öffnen, anmelden → Menü →
+„App installieren“. Bücher und Vokabeln liegen pro Gerät im Browser-Speicher; abgleichen geht
+automatisch über [Google Drive](#google-drive-optional) oder von Hand mit
+**Einstellungen → Sicherung herunterladen / einspielen**.
+Die Daten hängen an der Adresse: Wer später von `….pages.dev` auf eine eigene Domain wechselt,
+nimmt den Lernstand per Sicherung mit.
+
+## Google Drive (optional)
+
+Ein Ordner in Google Drive wird zur Quelle für Bücher, und Vokabeln, Lernstand und Lesefortschritt
+bleiben auf allen Geräten gleich:
+
+- **Bücher:** Neue EPUBs und PDFs im Ordner (auch in Unterordnern) lädt die App beim Abgleich
+  automatisch herunter. Danach liegen sie komplett auf dem Gerät und sind auch offline und ohne Drive
+  lesbar. In Drive löschen ändert in der App nichts. Ein in der App entferntes Buch kommt nicht wieder,
+  bis du **Einstellungen → Google Drive → Wieder laden** tippst. Ändert sich eine Datei in Drive nach dem
+  Import, lädt die App sie nicht neu.
+- **Lernstand:** liegt als `vokabel-reader-sync.json` im Ordner „Vokabel-Reader“. Beim Abgleich wird
+  zusammengeführt: das zuletzt geänderte Wort und die zuletzt geübte Karte gewinnen, Sätze und
+  Wiederholungen werden vereinigt, gelöschte Wörter bleiben gelöscht. Einstellungen bleiben pro Gerät.
+- **Wann:** beim Start der App, wenn das Gerät wieder online ist, nach einer Quizrunde und mit
+  **Jetzt abgleichen**. Google gibt der App nur für etwa eine Stunde Zugriff; danach zeigt die Bibliothek
+  **Mit Google Drive abgleichen**. Ein Tippen genügt (das Google-Fenster schließt sich meist von selbst).
+- **Berechtigungen:** Die App darf deine Drive-Dateien lesen und nur Dateien ändern, die sie selbst
+  angelegt hat (Ordner „Vokabel-Reader“, Sync-Datei). Löschen kann sie nichts.
+
+**Einmal einrichten (ca. 10 Minuten, kostenlos):**
+
+1. <https://console.cloud.google.com> → neues Projekt (z. B. „Vokabel-Reader“) → **APIs & Dienste →
+   Bibliothek → „Google Drive API“ aktivieren**. Ein Abrechnungskonto ist nicht nötig.
+2. **Google Auth Platform → Branding / Zielgruppe:** App-Name eintragen, Nutzertyp **Extern**, Status
+   **Testen**, unter „Testnutzer“ die eigene Google-Adresse eintragen.
+3. **Clients → Client erstellen → Webanwendung.** Unter „Autorisierte JavaScript-Quellen“:
+   `https://<projekt>.pages.dev` (bzw. die eigene Domain), `http://localhost:5173`,
+   `http://localhost:5179`, `http://localhost:4179`. Weiterleitungs-URIs braucht es keine.
+4. Die Client-ID (`….apps.googleusercontent.com`) in `.env` als `VITE_GOOGLE_CLIENT_ID=…` eintragen.
+   Sie ist öffentlich und kein Secret; `npm run build` baut sie in die App ein, also danach neu bauen
+   und deployen.
+5. In der App: **Einstellungen → Google Drive → Mit Google verbinden**. Google warnt „Diese App wurde
+   nicht von Google überprüft“: **Erweitert → Weiter zu …** und beide Häkchen setzen. Das ist bei
+   privaten Projekten normal.
+
+Danach legt die App in „Meine Ablage“ den Ordner **Vokabel-Reader** an; Bücher einfach dort hineinlegen.
+Einen anderen Ordner wählst du unter **Einstellungen → Google Drive** per Link (in Drive: Ordner →
+Teilen → Link kopieren); die anderen Geräte übernehmen die Wahl beim nächsten Abgleich.
+
+Grenzen: Eine LAN-Adresse wie `http://192.168.…` lässt Google nicht zu, am Handy also erst nach dem
+Deploy. Fragt Google im Status „Testen“ alle 7 Tage neu nach, den Status auf **In Produktion** stellen
+(geht ohne Überprüfung, die Warnung bleibt).
+
+## Offline
+
+Nach dem ersten Öffnen startet die App auch ohne Netz. Lesen, Quiz, Speichern und die Vokabelliste
+laufen lokal. Ohne Netz fehlen nur:
+
+- **DeepL**: Wörter, die du offline speicherst, bekommen ihre Übersetzung später automatisch
+  (beim nächsten Start, sobald das Gerät wieder online ist, oder unter **Einstellungen → Jetzt nachholen**).
+- **Teile des Wörterbuchs**, die noch nie geladen wurden. **Einstellungen → Ganzes Wörterbuch offline
+  speichern** lädt alles auf einmal (ca. 30 MB, am besten im WLAN; geht nur über https).
+
+Unter **Einstellungen → Daten** steht, ob der Browser den Speicher als dauerhaft führt. Sonst darf er
+Bücher und Vokabeln bei Platzmangel löschen; Chrome erlaubt das meist erst bei installierter App.
 
 ## Mit Claude anreichern (ohne API)
 
@@ -70,6 +141,10 @@ gezielt nach genau diesen. Abgeschnittene Antworten werden repariert, soweit die
 - **Ignorieren** für Namen u. Ä.: Das Wort kommt nicht ins Quiz.
 - Blättern: Pfeiltasten, Wischen oder die Pfeile am Rand. Bei PDFs schaltet ⇔ zwischen ganzer Seite und voller Breite um.
 - **Quiz**: Leertaste zeigt die Antwort, 1–4 bewerten (Nochmal/Schwer/Gut/Einfach). Kartentypen in den Einstellungen.
+- **Quiz pro Buch**: oben im Quiz ein Buch wählen oder in der Bibliothek unter dem Buch auf „Quiz“ tippen.
+  Abgefragt werden nur Wörter, die du in diesem Buch gespeichert hast. Der Lernstand bleibt pro Wort gemeinsam:
+  Ein Wort aus zwei Büchern, das du über Buch A wiederholt hast, ist auch in Buch B erst später wieder dran.
+  Das Tageslimit für neue Karten gilt für alle Quizze zusammen. Die Vokabelliste lässt sich ebenso nach Buch filtern.
 - **Einstellungen → Wiederholungen als CSV**: ein Review pro Zeile, z. B. für Vergessenskurven in R.
 
 ## Tests
@@ -77,7 +152,7 @@ gezielt nach genau diesen. Abgeschnittene Antworten werden repariert, soweit die
 ```bash
 npm test                          # Unit-Tests (Vitest)
 npm run e2e                       # End-to-End gegen den Dev-Server (Playwright, Test-EPUB/-PDF werden erzeugt)
-npm run build && E2E_PREVIEW=1 npm run e2e   # dasselbe gegen den Produktions-Build, inkl. CSP-Test
+npm run build && E2E_PREVIEW=1 npm run e2e   # dasselbe gegen den Produktions-Build, inkl. CSP- und Passwort-Test
 ```
 
 Einmalig vorher: `npx playwright install chromium`.
@@ -91,10 +166,14 @@ dort also nur Bücher aus vertrauenswürdigen Quellen öffnen.
 ## Aufbau
 
 ```
+functions/_middleware.ts     Passwortschutz → server/auth.ts (auch im Vite-Dev-/Preview-Server)
 functions/api/translate.ts   Cloudflare Pages Function → server/translate.ts (auch im Vite-Dev-Server)
 scripts/build-dictionary.mjs Ding → public/dict/en-de/<shard>.json
 src/reader/                  foliate-js einbinden, Wort/Satz unter dem Finger finden
+src/dict/                    Wörterbuch nachschlagen, komplett offline speichern
 src/lookup/                  Popup: Wörterbuch + DeepL, Speichern
+src/translate/               DeepL-Client, offline gespeicherte Wörter nachübersetzen
+src/drive/                   Google-Login, Drive-Client, Bücher laden, Lernstand abgleichen
 src/enrich/                  Prompt bauen, Claude-Antwort prüfen und übernehmen
 src/quiz/                    FSRS-Planung und Quiz
 src/db/                      Dexie-Schema und Datenzugriff

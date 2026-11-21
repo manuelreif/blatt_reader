@@ -4,7 +4,7 @@ export type Route =
   | { name: 'library' }
   | { name: 'read'; bookId: string; cfi?: string }
   | { name: 'vocab'; termId?: string }
-  | { name: 'quiz' }
+  | { name: 'quiz'; bookId?: string }
   | { name: 'enrich' }
   | { name: 'settings' }
 
@@ -18,7 +18,7 @@ export function parseHash(hash: string): Route {
     case 'vocab':
       return { name: 'vocab', termId: parts[1] }
     case 'quiz':
-      return { name: 'quiz' }
+      return { name: 'quiz', bookId: parts[1] }
     case 'enrich':
       return { name: 'enrich' }
     case 'settings':
@@ -34,6 +34,8 @@ export function href(route: Route): string {
       return `#/read/${encodeURIComponent(route.bookId)}${route.cfi ? `?cfi=${encodeURIComponent(route.cfi)}` : ''}`
     case 'vocab':
       return route.termId ? `#/vocab/${encodeURIComponent(route.termId)}` : '#/vocab'
+    case 'quiz':
+      return route.bookId ? `#/quiz/${encodeURIComponent(route.bookId)}` : '#/quiz'
     case 'library':
       return '#/'
     default:

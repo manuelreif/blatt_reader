@@ -357,6 +357,13 @@ h2 {
   background: var(--accent);
 }
 
+.book-quiz {
+  display: inline-block;
+  margin: 0 0.5rem;
+  padding: 0.35rem 0;
+  font-size: 0.8em;
+}
+
 .book .icon.danger {
   position: absolute;
   top: 0.2rem;
@@ -575,17 +582,25 @@ h2 {
 
 .toolbar {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.5rem;
   margin-bottom: 0.8rem;
 }
 
 .toolbar input[type='search'] {
-  flex: 1 1 0;
+  flex: 1 1 10rem;
   min-width: 0;
 }
 
 .toolbar select {
   max-width: 45%;
+}
+
+/* book titles are long: the book filter gets its own line when space is short */
+.toolbar select.book-filter {
+  flex: 1 1 12rem;
+  max-width: 100%;
+  min-width: 0;
 }
 
 .term-list {
@@ -703,6 +718,16 @@ h2 {
   margin: 0 auto;
 }
 
+.quiz-book {
+  max-width: 100%;
+  min-width: 0;
+  text-overflow: ellipsis;
+}
+
+.quiz-done .quiz-book {
+  margin-bottom: 1rem;
+}
+
 .quiz-card {
   background: var(--surface);
   border: 1px solid var(--line);
@@ -776,6 +801,29 @@ h2 {
 .quiz-done {
   text-align: center;
   padding: 3rem 1rem;
+}
+
+/* --- google drive ------------------------------------------------------ */
+
+.drive-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.8rem;
+  margin: 0 0 1rem;
+  padding: 0.5rem 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.drive-bar progress {
+  flex: 1 1 8rem;
+}
+
+.drive-link {
+  flex: 1 1 16rem;
+  min-width: 0;
 }
 
 /* --- enrich & settings -------------------------------------------------- */

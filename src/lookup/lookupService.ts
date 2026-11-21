@@ -14,16 +14,19 @@ export interface DictResult {
   pos?: string
   matchedKey?: string
   senses: DictSense[]
+  /** no senses found, but part of the dictionary could not be loaded (offline) */
+  unavailable?: boolean
 }
 
 export async function lookupDictionary(target: LookupTarget): Promise<DictResult> {
   const { lemma, pos, candidates } = await lemmatize(target.surface, target.sentence)
-  const hit = await lookupCandidates(candidates)
+  const { hit, unavailable } = await lookupCandidates(candidates)
   return {
     lemma: hit && hit.key !== lemma && candidates.indexOf(hit.key) < candidates.indexOf(lemma) ? hit.key : lemma,
     pos: pos ?? hit?.senses[0]?.pos,
     matchedKey: hit?.key,
     senses: hit?.senses ?? [],
+    ...(!hit && unavailable ? { unavailable: true } : {}),
   }
 }
 

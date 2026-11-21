@@ -1,7 +1,9 @@
+import { useLiveQuery } from 'dexie-react-hooks'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { loadQuizSession, recordReview, type QuizItem } from '../db/repo'
+import { countDue, loadQuizSession, nextDueAt, quizBooks, recordReview, type QuizItem } from '../db/repo'
 import { db } from '../db/schema'
-import { href } from '../router'
+import { syncDrive } from '../drive/driveSync'
+import { href, navigate } from '../router'
 import { useSettings } from '../settings/settings'
 import { Highlighted } from '../util/Highlighted'
 import { canSpeak, speak } from '../util/speech'
@@ -91,7 +93,31 @@ function Back({ item }: { item: QuizItem }) {
   )
 }
 
-export function QuizView() {
+/** "Alle Bücher" or one book; a book's quiz asks only the words saved from it. */
+function BookPicker({ bookId }: { bookId?: string }) {
+  const books = useLiveQuery(() => quizBooks(), [])
+  const allDue = useLiveQuery(() => countDue(), [], 0)
+  if (!books || (!books.length && !bookId)) return null
+  return (
+    <select
+      className="quiz-book"
+      aria-label="Buch"
+      data-testid="quiz-book"
+      value={bookId ?? ''}
+      onChange={e => navigate({ name: 'quiz', bookId: e.target.value || undefined })}
+    >
+      <option value="">Alle Bücher ({allDue} fällig)</option>
+      {books.map(b => (
+        <option key={b.bookId} value={b.bookId}>
+          {b.title} ({b.due} fällig)
+        </option>
+      ))}
+      {bookId && !books.some(b => b.bookId === bookId) && <option value={bookId}>Buch ohne Wörter</option>}
+    </select>
+  )
+}
+
+export function QuizView({ bookId }: { bookId?: string }) {
   const settings = useSettings()
   const [items, setItems] = useState<QuizItem[] | null>(null)
   const [index, setIndex] = useState(0)
@@ -101,22 +127,24 @@ export function QuizView() {
   const [nextDue, setNextDue] = useState<number | null>(null)
 
   const load = useCallback(async () => {
-    const session = await loadQuizSession({ limit: SESSION_SIZE, newPerDay: settings.newCardsPerDay })
+    const session = await loadQuizSession({ limit: SESSION_SIZE, newPerDay: settings.newCardsPerDay, bookId })
     setItems(session)
     setIndex(0)
     setRevealed(false)
     shownAt.current = Date.now()
-    if (!session.length) {
-      const first = await db.cards.orderBy('due').filter(c => !c.suspended).first()
-      setNextDue(first?.due ?? null)
-    }
-  }, [settings.newCardsPerDay])
+    if (!session.length) setNextDue(await nextDueAt(bookId))
+  }, [settings.newCardsPerDay, bookId])
 
   useEffect(() => {
     void load()
   }, [load])
 
   const item = items?.[index]
+  const finished = !!items && !item && done > 0
+  useEffect(() => {
+    // the round's reviews go to the other devices right away
+    if (finished) void syncDrive()
+  }, [finished])
   const intervals = useMemo(() => (item ? preview(item.card.fsrs) : null), [item])
 
   const rate = useCallback(
@@ -158,12 +186,14 @@ export function QuizView() {
   if (!item)
     return (
       <section className="quiz-done">
+        <BookPicker bookId={bookId} />
         <h1>{done ? 'Geschafft!' : 'Nichts fällig'}</h1>
         {done > 0 && <p>{done} Karten wiederholt.</p>}
         {nextDue && <p className="muted">Nächste Karte fällig: {new Date(nextDue).toLocaleString('de-AT', { dateStyle: 'medium', timeStyle: 'short' })}</p>}
         {!nextDue && !done && (
           <p className="muted">
-            Noch keine Karten. Speichere beim <a href={href({ name: 'library' })}>Lesen</a> ein paar Wörter.
+            {bookId ? 'Aus diesem Buch sind noch keine Wörter im Quiz.' : 'Noch keine Karten.'} Speichere beim{' '}
+            <a href={href({ name: 'library' })}>Lesen</a> ein paar Wörter.
           </p>
         )}
         <button onClick={() => void load()}>Erneut prüfen</button>
@@ -175,6 +205,7 @@ export function QuizView() {
     <section className="quiz" data-testid="quiz">
       <header className="page-head">
         <h1>Quiz</h1>
+        <BookPicker bookId={bookId} />
         <span className="muted">
           noch {remaining} · {done} erledigt
         </span>

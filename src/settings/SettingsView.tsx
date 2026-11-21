@@ -1,7 +1,17 @@
+import { useLiveQuery } from 'dexie-react-hooks'
 import { useEffect, useRef, useState } from 'react'
 import { CARD_TYPES, type CardType } from '../db/schema'
-import { dictionaryAvailable } from '../dict/dictionary'
-import { translateInContext } from '../translate/deepl'
+import { DriveSettings } from '../drive/DriveSettings'
+import {
+  DictDownloadError,
+  downloadDictionary,
+  loadIndex,
+  offlineStatus,
+  type DictIndex,
+  type OfflineStatus,
+} from '../dict/dictionary'
+import { translateInContext, TranslateError } from '../translate/deepl'
+import { countPendingTranslations, retryPendingTranslations } from '../translate/pending'
 import { backupJson, download, restoreBackup, reviewLogCsv, vocabCsv } from '../vocab/export'
 import { setSetting, useSettings } from './settings'
 
@@ -13,28 +23,165 @@ const CARD_LABEL: Record<CardType, string> = {
 
 const today = () => new Date().toISOString().slice(0, 10)
 
+const mb = (bytes: number) => `${Math.round(bytes / 1e6)} MB`
+
+const LoginLink = ({ show }: { show: boolean }) => (show ? <> · <a href="/login">Anmelden</a></> : null)
+
+function DictionarySection() {
+  const [index, setIndex] = useState<DictIndex | null | undefined>(undefined)
+  const [status, setStatus] = useState<OfflineStatus | null>(null)
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null)
+  const [error, setError] = useState<{ message: string; login: boolean } | null>(null)
+
+  const refresh = () => void offlineStatus().then(setStatus)
+  useEffect(() => {
+    void loadIndex().then(setIndex)
+    refresh()
+  }, [])
+
+  async function download() {
+    setError(null)
+    setProgress({ done: 0, total: status?.total ?? 0 })
+    try {
+      await downloadDictionary((done, total) => setProgress({ done, total }))
+      void navigator.storage?.persist?.().catch(() => {})
+    } catch (e) {
+      setError({ message: (e as Error).message, login: e instanceof DictDownloadError && e.login })
+    } finally {
+      setProgress(null)
+      refresh()
+    }
+  }
+
+  if (index === undefined) return <p className="muted">Offline-Wörterbuch: …</p>
+  if (index === null)
+    return <p className="muted">Offline-Wörterbuch: fehlt oder nicht erreichbar (lokal: „npm run build:dict“ ausführen)</p>
+  const complete = !!status && status.total > 0 && status.stored === status.total
+  return (
+    <div data-testid="dict-offline">
+      <p className="muted">
+        Offline-Wörterbuch: {index.source.split(' — ')[0]}, {index.entries.toLocaleString('de-DE')} Stichwörter, Lizenz GPL.
+      </p>
+      {status && !status.supported && (
+        <p className="muted">Komplett offline speichern geht nur, wenn die App über https läuft (nicht über http://192.168…).</p>
+      )}
+      {status?.supported && complete && <p className="ok">✓ Komplett offline gespeichert</p>}
+      {status?.supported && !complete && !progress && (
+        <>
+          <p className="muted">
+            Offline gespeichert: {status.stored} von {status.total} Teilen. Ohne Download lädt die App nur die Teile, die du beim
+            Nachschlagen brauchst; offline fehlen dann Wörter mit neuen Anfangsbuchstaben.
+          </p>
+          <div className="row">
+            <button onClick={() => void download()} data-testid="dict-download">
+              Ganzes Wörterbuch offline speichern{status.bytes ? ` (ca. ${mb(status.bytes)})` : ''}
+            </button>
+            <span className="muted">am besten im WLAN</span>
+          </div>
+        </>
+      )}
+      {progress && (
+        <div className="row">
+          <progress value={progress.done} max={progress.total || 1} />
+          <span>
+            Lade … {progress.done} / {progress.total}
+          </span>
+        </div>
+      )}
+      {error && (
+        <p className="warn">
+          {error.message}
+          <LoginLink show={error.login} />
+          {status && status.stored > 0 ? ' – ein erneuter Versuch macht dort weiter, wo er aufgehört hat.' : ''}
+        </p>
+      )}
+    </div>
+  )
+}
+
+function PendingTranslations() {
+  const pending = useLiveQuery(countPendingTranslations, [], 0)
+  const [msg, setMsg] = useState<{ text: string; login?: boolean } | null>(null)
+  const [busy, setBusy] = useState(false)
+  if (!pending && !msg) return null
+  async function retry() {
+    setBusy(true)
+    const r = await retryPendingTranslations()
+    setBusy(false)
+    setMsg(r.failed ? { text: `${r.done} nachgeholt, dann Fehler: ${r.failed}`, login: /angemeldet/.test(r.failed) } : { text: `${r.done} nachgeholt.` })
+  }
+  return (
+    <div className="row" data-testid="deepl-pending-settings">
+      {pending > 0 && <span>{pending} gespeicherte Wörter warten auf die DeepL-Übersetzung.</span>}
+      {pending > 0 && (
+        <button disabled={busy} onClick={() => void retry()}>
+          Jetzt nachholen
+        </button>
+      )}
+      {msg && (
+        <span className={msg.text.includes('Fehler') ? 'warn' : 'ok'}>
+          {msg.text}
+          <LoginLink show={!!msg.login} />
+        </span>
+      )}
+    </div>
+  )
+}
+
+function PersistentStorage() {
+  const [persisted, setPersisted] = useState<boolean | null>(null)
+  const [denied, setDenied] = useState(false)
+  useEffect(() => {
+    void navigator.storage?.persisted?.().then(setPersisted, () => {})
+  }, [])
+  if (persisted === null) return null
+  if (persisted)
+    return <p className="ok">✓ Dauerhafter Speicher: Der Browser löscht diese Daten nicht von sich aus, auch nicht bei Platzmangel.</p>
+  return (
+    <div data-testid="storage-persist">
+      <p className="warn">
+        Speicher nicht dauerhaft: Wird der Platz knapp, darf der Browser Bücher und Vokabeln löschen. Chrome erlaubt dauerhaften
+        Speicher meist erst, wenn die App installiert ist.
+      </p>
+      <div className="row">
+        <button
+          onClick={() =>
+            void navigator.storage.persist().then(ok => {
+              setPersisted(ok)
+              setDenied(!ok)
+            })
+          }
+        >
+          Dauerhaften Speicher anfordern
+        </button>
+        {denied && <span className="muted">Abgelehnt. Installiere die App (Chrome-Menü → App installieren) und versuch es dann noch einmal.</span>}
+      </div>
+    </div>
+  )
+}
+
 export function SettingsView() {
   const s = useSettings()
-  const [test, setTest] = useState('')
-  const [dictOk, setDictOk] = useState<boolean | null>(null)
+  const [test, setTest] = useState<{ text: string; login?: boolean }>({ text: '' })
   const [storage, setStorage] = useState('')
   const [msg, setMsg] = useState('')
   const restoreInput = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    void dictionaryAvailable().then(setDictOk)
     void navigator.storage?.estimate?.().then(e => {
       if (e.usage !== undefined) setStorage(`${(e.usage / 1e6).toFixed(0)} MB belegt`)
     })
   }, [])
 
   async function testDeepl() {
-    setTest('Teste …')
+    setTest({ text: 'Teste …' })
     try {
       const r = await translateInContext('bank', 'We had a picnic on the bank of the river.', { useCache: false })
-      setTest(`OK: „bank“ → „${r.translation}“${r.billedCharacters !== undefined ? ` (abgerechnet: ${r.billedCharacters} Zeichen)` : ''}`)
+      setTest({
+        text: `OK: „bank“ → „${r.translation}“${r.billedCharacters !== undefined ? ` (abgerechnet: ${r.billedCharacters} Zeichen)` : ''}`,
+      })
     } catch (e) {
-      setTest(`Fehler: ${(e as Error).message}`)
+      setTest({ text: `Fehler: ${(e as Error).message}`, login: e instanceof TranslateError && e.login })
     }
   }
 
@@ -48,17 +195,22 @@ export function SettingsView() {
         online: Cloudflare Pages Function). Das Wort geht als Text an DeepL, der Satz als Kontext; abgerechnet wird nur das Wort.
       </p>
       <label className="field">
-        <span className="label">App-Token (nur nötig, wenn auf dem Server APP_TOKEN gesetzt ist)</span>
+        <span className="label">
+          App-Token (nur nötig, wenn auf dem Server APP_TOKEN gesetzt ist; mit Passwortschutz überflüssig)
+        </span>
         <input type="password" value={s.appToken} onChange={e => void setSetting('appToken', e.target.value)} autoComplete="off" />
       </label>
       <div className="row">
         <button onClick={() => void testDeepl()}>DeepL testen</button>
-        <span>{test}</span>
+        <span>
+          {test.text}
+          <LoginLink show={!!test.login} />
+        </span>
       </div>
-      <p className="muted">
-        Offline-Wörterbuch:{' '}
-        {dictOk === null ? '…' : dictOk ? 'vorhanden (Ding, TU Chemnitz, GPL)' : 'fehlt – „npm run build:dict“ ausführen'}
-      </p>
+      <PendingTranslations />
+
+      <h2>Wörterbuch</h2>
+      <DictionarySection />
 
       <h2>Lesen & Speichern</h2>
       <label className="check">
@@ -94,11 +246,15 @@ export function SettingsView() {
         />
       </label>
 
+      <h2>Google Drive</h2>
+      <DriveSettings />
+
       <h2>Daten</h2>
       <p className="muted">
         Alles liegt lokal in diesem Browser{storage ? ` (${storage})` : ''}. Sicherungen enthalten Vokabeln, Kontexte und
         Lernstand, aber keine Bücher. So kannst du den Stand auch auf ein anderes Gerät übertragen.
       </p>
+      <PersistentStorage />
       <div className="row">
         <button onClick={() => void backupJson().then(j => download(`vokabeln-backup-${today()}.json`, j, 'application/json'))}>
           Sicherung herunterladen

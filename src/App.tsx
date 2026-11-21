@@ -2,12 +2,14 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { useEffect } from 'react'
 import { countDue } from './db/repo'
 import { db } from './db/schema'
+import { syncDrive } from './drive/driveSync'
 import { EnrichView } from './enrich/EnrichView'
 import { LibraryView } from './library/LibraryView'
 import { QuizView } from './quiz/QuizView'
 import { ReaderView } from './reader/ReaderView'
 import { href, useRoute, type Route } from './router'
 import { SettingsView } from './settings/SettingsView'
+import { retryPendingTranslations } from './translate/pending'
 import { VocabView } from './vocab/VocabView'
 
 function Nav({ route }: { route: Route }) {
@@ -38,6 +40,15 @@ export function App() {
   useEffect(() => {
     // ask the browser not to evict books and vocabulary under storage pressure
     navigator.storage?.persist?.().catch(() => {})
+    // DeepL translations for words saved while offline; Google Drive sync while the
+    // last login is still valid (otherwise the library shows a button)
+    const retry = () => {
+      void retryPendingTranslations()
+      void syncDrive()
+    }
+    retry()
+    window.addEventListener('online', retry)
+    return () => window.removeEventListener('online', retry)
   }, [])
   if (route.name === 'read') return <ReaderView key={route.bookId} bookId={route.bookId} cfi={route.cfi} />
   return (
@@ -46,7 +57,7 @@ export function App() {
       <main className="page">
         {route.name === 'library' && <LibraryView />}
         {route.name === 'vocab' && <VocabView termId={route.termId} />}
-        {route.name === 'quiz' && <QuizView />}
+        {route.name === 'quiz' && <QuizView key={route.bookId ?? ''} bookId={route.bookId} />}
         {route.name === 'enrich' && <EnrichView />}
         {route.name === 'settings' && <SettingsView />}
       </main>

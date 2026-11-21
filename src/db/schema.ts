@@ -17,6 +17,8 @@ export interface Book {
   lastLocation?: string
   /** 0..1 */
   progress?: number
+  /** when the reading position last moved; the newer position wins when syncing devices */
+  progressAt?: number
 }
 
 /** 0 = ignoriert, 1–5 = Lernstufen, 6 = bekannt */
@@ -62,6 +64,8 @@ export interface Context {
   cfi?: string
   /** DeepL translation of the word in this sentence */
   translation?: string
+  /** saved while DeepL was unreachable; retried later (src/translate/pending.ts) */
+  deeplPending?: boolean
   createdAt: number
 }
 
@@ -106,6 +110,28 @@ export interface Setting {
   value: unknown
 }
 
+/** A book file in the Google Drive books folder that the sync has dealt with (src/drive/syncBooks.ts). */
+export interface DriveFileRow {
+  /** Google Drive file id */
+  id: string
+  name: string
+  size?: number
+  md5?: string
+  /** library entry the file was imported as */
+  bookId?: string
+  /** dismissed = the book was removed from the library, so it is not downloaded again */
+  state: 'imported' | 'dismissed' | 'error'
+  error?: string
+  updatedAt: number
+}
+
+/** A deleted word, kept so that syncing with another device does not bring it back. */
+export interface Tombstone {
+  /** the deleted term's id */
+  id: string
+  at: number
+}
+
 export class AppDB extends Dexie {
   books!: EntityTable<Book, 'id'>
   terms!: EntityTable<Term, 'id'>
@@ -114,6 +140,8 @@ export class AppDB extends Dexie {
   reviewLogs!: EntityTable<ReviewLogRow, 'id'>
   translationCache!: EntityTable<TranslationCacheRow, 'key'>
   settings!: EntityTable<Setting, 'key'>
+  driveFiles!: EntityTable<DriveFileRow, 'id'>
+  tombstones!: EntityTable<Tombstone, 'id'>
 
   constructor(name = 'vokabel-reader') {
     super(name)
@@ -125,6 +153,11 @@ export class AppDB extends Dexie {
       reviewLogs: '++id, cardId, termId, reviewedAt',
       translationCache: 'key',
       settings: 'key',
+    })
+    // Google Drive sync; only new tables, the existing data stays as it is
+    this.version(2).stores({
+      driveFiles: 'id, bookId, state',
+      tombstones: 'id, at',
     })
   }
 }

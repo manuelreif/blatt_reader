@@ -23,6 +23,12 @@ export const DEFAULT_SETTINGS: AppSettings = {
   readerFontScale: 1,
 }
 
+/**
+ * Rows in db.settings that belong to this device only: never part of a backup and
+ * never overwritten by one (open enrichment batch, Google Drive connection).
+ */
+export const LOCAL_SETTING_KEYS: ReadonlySet<string> = new Set(['enrichBatch', 'drive'])
+
 export async function getSettings(): Promise<AppSettings> {
   const rows = await db.settings.toArray()
   const stored = Object.fromEntries(rows.map(r => [r.key, r.value]))

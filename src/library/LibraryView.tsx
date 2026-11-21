@@ -1,8 +1,9 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { deleteBook } from '../db/repo'
+import { deleteBook, quizBooks, type QuizBook } from '../db/repo'
 import { db, type Book } from '../db/schema'
-import { navigate } from '../router'
+import { DriveBar } from '../drive/DriveBar'
+import { href, navigate } from '../router'
 import { importBook } from './importBook'
 
 const ACCEPT = '.epub,.pdf,.mobi,.azw3,.azw,.fb2,.fbz,.cbz'
@@ -20,8 +21,19 @@ function Cover({ book }: { book: Book }) {
   )
 }
 
+/** The book's own quiz: only words saved while reading it. */
+function BookQuizLink({ quiz }: { quiz?: QuizBook }) {
+  if (!quiz) return null
+  return (
+    <a className="book-quiz" href={href({ name: 'quiz', bookId: quiz.bookId })} data-testid="book-quiz">
+      Quiz · {quiz.due ? `${quiz.due} fällig` : `${quiz.terms} Wörter`}
+    </a>
+  )
+}
+
 export function LibraryView() {
   const books = useLiveQuery(() => db.books.orderBy('addedAt').reverse().toArray(), [])
+  const quiz = useLiveQuery(async () => new Map((await quizBooks()).map(q => [q.bookId, q])), [])
   const input = useRef<HTMLInputElement>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -77,6 +89,7 @@ export function LibraryView() {
           }}
         />
       </header>
+      <DriveBar />
       {error && <p className="error">{error}</p>}
       {books && books.length === 0 && (
         <div className="empty">
@@ -95,12 +108,14 @@ export function LibraryView() {
                 <span style={{ width: `${Math.round((book.progress ?? 0) * 100)}%` }} />
               </span>
             </button>
+            <BookQuizLink quiz={quiz?.get(book.id)} />
             <button
               className="icon danger"
               title="Buch entfernen"
-              onClick={() => {
-                if (confirm(`„${book.title}“ aus der Bibliothek entfernen? Deine Vokabeln bleiben erhalten.`))
-                  void deleteBook(book.id)
+              onClick={async () => {
+                const fromDrive = await db.driveFiles.where('bookId').equals(book.id).count()
+                const note = fromDrive ? ' Aus Google Drive wird es nicht wieder geladen (Einstellungen → Google Drive → Wieder laden).' : ''
+                if (confirm(`„${book.title}“ aus der Bibliothek entfernen? Deine Vokabeln bleiben erhalten.${note}`)) void deleteBook(book.id)
               }}
             >
               ✕

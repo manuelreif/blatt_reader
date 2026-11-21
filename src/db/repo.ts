@@ -20,6 +20,8 @@ export interface SaveLookupInput {
   surface: string
   sentence: string
   translation?: string
+  /** DeepL failed: fetch the context translation later */
+  deeplPending?: boolean
   dictSenses: DictSense[]
   pos?: string
   book: { id: string; title: string }
@@ -85,6 +87,7 @@ export async function saveLookup(input: SaveLookupInput): Promise<SaveLookupResu
           sentence,
           cfi: input.cfi,
           translation: input.translation,
+          ...(input.deeplPending ? { deeplPending: true } : {}),
           createdAt: now,
         }
         await db.contexts.add(ctx)
@@ -120,9 +123,11 @@ export async function setTermStatus(id: string, status: number, cardTypes: CardT
   })
 }
 
-export async function deleteTerm(id: string) {
-  await db.transaction('rw', [db.terms, db.contexts, db.cards, db.reviewLogs], async () => {
+export async function deleteTerm(id: string, now = Date.now()) {
+  await db.transaction('rw', [db.terms, db.contexts, db.cards, db.reviewLogs, db.tombstones], async () => {
     await db.terms.delete(id)
+    // remembered so that a sync with another device does not bring the word back
+    await db.tombstones.put({ id, at: now })
     await db.contexts.where('termId').equals(id).delete()
     await db.cards.where('termId').equals(id).delete()
     await db.reviewLogs.where('termId').equals(id).delete()
@@ -130,7 +135,11 @@ export async function deleteTerm(id: string) {
 }
 
 export async function deleteBook(id: string) {
-  await db.books.delete(id)
+  await db.transaction('rw', db.books, db.driveFiles, async () => {
+    await db.books.delete(id)
+    // a book from Google Drive must not come back with the next sync
+    await db.driveFiles.where('bookId').equals(id).modify({ state: 'dismissed', updatedAt: Date.now() })
+  })
 }
 
 export interface QuizItem {
@@ -143,14 +152,99 @@ function isNewCard(c: CardRow) {
   return c.fsrs.state === 0
 }
 
-/** Due reviews first, then new cards up to the daily limit. */
-export async function loadQuizSession(opts: { limit: number; newPerDay: number; now?: Date }): Promise<QuizItem[]> {
-  const now = opts.now ?? new Date()
-  const due = await db.cards
+/** Ids of the words saved with at least one reading context from this book. */
+export async function termIdsForBook(bookId: string): Promise<Set<string>> {
+  const ids = new Set<string>()
+  await db.contexts.where('bookId').equals(bookId).each(c => ids.add(c.termId))
+  return ids
+}
+
+export interface BookWords {
+  bookId: string
+  /** title stored with the newest context (the book may be gone from the library) */
+  title: string
+  termIds: Set<string>
+  /** newest context from this book */
+  lastAt: number
+}
+
+/** Books that words were saved from, most recently read first. */
+export async function booksWithWords(): Promise<BookWords[]> {
+  const byBook = new Map<string, BookWords>()
+  await db.contexts.each(c => {
+    const b = byBook.get(c.bookId)
+    if (!b) byBook.set(c.bookId, { bookId: c.bookId, title: c.bookTitle, termIds: new Set([c.termId]), lastAt: c.createdAt })
+    else {
+      b.termIds.add(c.termId)
+      if (c.createdAt >= b.lastAt) Object.assign(b, { title: c.bookTitle, lastAt: c.createdAt })
+    }
+  })
+  return [...byBook.values()].sort((a, b) => b.lastAt - a.lastAt)
+}
+
+export interface QuizBook {
+  bookId: string
+  title: string
+  /** words from this book that are in the quiz (not ignored or known) */
+  terms: number
+  /** cards due now, new ones included */
+  due: number
+}
+
+/** Books with words in the quiz, for the per-book quiz. A word read in two books counts for both. */
+export async function quizBooks(now = new Date()): Promise<QuizBook[]> {
+  const active = new Set<string>()
+  const dueByTerm = new Map<string, number>()
+  await db.cards.each(c => {
+    if (c.suspended) return
+    active.add(c.termId)
+    if (c.due <= now.getTime()) dueByTerm.set(c.termId, (dueByTerm.get(c.termId) ?? 0) + 1)
+  })
+  const out: QuizBook[] = []
+  for (const b of await booksWithWords()) {
+    let terms = 0
+    let due = 0
+    for (const id of b.termIds) {
+      if (!active.has(id)) continue
+      terms++
+      due += dueByTerm.get(id) ?? 0
+    }
+    if (terms) out.push({ bookId: b.bookId, title: b.title, terms, due })
+  }
+  return out
+}
+
+async function dueCards(now: Date, bookId?: string): Promise<CardRow[]> {
+  const terms = bookId ? await termIdsForBook(bookId) : null
+  return db.cards
     .where('due')
     .belowOrEqual(now.getTime())
-    .filter(c => !c.suspended)
+    .filter(c => !c.suspended && (!terms || terms.has(c.termId)))
     .sortBy('due')
+}
+
+/** When the next card (of this book, if given) is due; null if there is none. */
+export async function nextDueAt(bookId?: string): Promise<number | null> {
+  const terms = bookId ? await termIdsForBook(bookId) : null
+  const first = await db.cards
+    .orderBy('due')
+    .filter(c => !c.suspended && (!terms || terms.has(c.termId)))
+    .first()
+  return first?.due ?? null
+}
+
+/**
+ * Due reviews first, then new cards up to the daily limit. With `bookId` only words saved
+ * from that book; the learning state and the daily limit for new cards stay shared.
+ */
+export async function loadQuizSession(opts: {
+  limit: number
+  newPerDay: number
+  bookId?: string
+  now?: Date
+}): Promise<QuizItem[]> {
+  const now = opts.now ?? new Date()
+  const due = await dueCards(now, opts.bookId)
   const startOfDay = new Date(now)
   startOfDay.setHours(0, 0, 0, 0)
   const newToday = await db.reviewLogs
@@ -167,7 +261,10 @@ export async function loadQuizSession(opts: { limit: number; newPerDay: number; 
   for (const card of cards) {
     const term = await db.terms.get(card.termId)
     if (!term) continue
-    const contexts = await db.contexts.where('termId').equals(card.termId).toArray()
+    const all = await db.contexts.where('termId').equals(card.termId).toArray()
+    // in a book's quiz, show a sentence from that book
+    const fromBook = opts.bookId ? all.filter(c => c.bookId === opts.bookId) : []
+    const contexts = fromBook.length ? fromBook : all
     const context = contexts.length ? contexts[Math.floor(Math.random() * contexts.length)] : undefined
     items.push({ card, term, context })
   }
@@ -185,11 +282,12 @@ function spreadSiblings(items: QuizItem[]): QuizItem[] {
   return out
 }
 
-export async function countDue(now = new Date()): Promise<number> {
+export async function countDue(now = new Date(), bookId?: string): Promise<number> {
+  const terms = bookId ? await termIdsForBook(bookId) : null
   return db.cards
     .where('due')
     .belowOrEqual(now.getTime())
-    .filter(c => !c.suspended)
+    .filter(c => !c.suspended && (!terms || terms.has(c.termId)))
     .count()
 }
 
@@ -215,7 +313,8 @@ export async function recordReview(card: CardRow, rating: Grade, opts: { now?: D
     if (term && term.status !== STATUS_IGNORED) {
       const siblings = await db.cards.where('termId').equals(card.termId).toArray()
       const minStability = Math.min(...siblings.map(c => (c.id === card.id ? next.stability : c.fsrs.stability)))
-      await db.terms.update(card.termId, { status: statusFromStability(minStability) })
+      // updatedAt: a sync between devices keeps the word that was reviewed last
+      await db.terms.update(card.termId, { status: statusFromStability(minStability), updatedAt: now.getTime() })
     }
   })
   return next
