@@ -316,6 +316,11 @@ test.describe('Google Drive (Google replaced by a stub)', () => {
     // the downloaded book opens like any other; a word saved there goes to Drive with the next sync
     await page.goto('/')
     await expect(page.locator('.book-title')).toHaveText(['The Test Book'])
+    await expect(page.getByTestId('drive-bar')).toContainText('Bücher aus Vokabel-Reader')
+    await expect(page.getByTestId('drive-bar').getByRole('link', { name: 'Vokabel-Reader' })).toHaveAttribute(
+      'href',
+      `https://drive.google.com/drive/folders/${app.id}`,
+    )
     await page.locator('.book-open').click()
     const frame = await bookFrame(page, 'unbiased estimator')
     await clickWord(page, frame, 'estimator', 1)

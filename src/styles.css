@@ -817,6 +817,11 @@ h2 {
   background: var(--surface);
 }
 
+.drive-bar-idle {
+  padding-block: 0.3rem;
+  font-size: 0.9em;
+}
+
 .drive-bar progress {
   flex: 1 1 8rem;
 }

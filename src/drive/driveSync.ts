@@ -191,8 +191,34 @@ const syncAgain = async (opts: SyncOptions) => {
   return syncDrive(opts)
 }
 
+/** What the user typed as books folder: a Drive link, a folder name or a bare folder id. */
+async function resolveFolder(drive: DriveClient, input: string): Promise<DriveFile> {
+  const s = input.trim()
+  const isLink = /^https?:\/\//i.test(s) || /drive\.google\./i.test(s)
+  const notFound = isLink
+    ? 'Ordner nicht gefunden – stimmt der Link, und kannst du den Ordner mit diesem Google-Konto öffnen?'
+    : `Kein Ordner namens „${s}“ gefunden – Name genau wie in Google Drive schreiben oder den Link zum Ordner einfügen`
+  if (!isLink) {
+    const byName = await drive.findFoldersByName(s)
+    if (byName.length === 1) return byName[0]
+    if (byName.length > 1)
+      throw new DriveError(`Es gibt ${byName.length} Ordner namens „${s}“ – bitte den Link zum richtigen Ordner einfügen`)
+  }
+  const id = folderIdFromLink(s)
+  if (!id) throw new DriveError(isLink ? 'Das ist kein Link zu einem Google-Drive-Ordner' : notFound)
+  let folder: DriveFile
+  try {
+    folder = await drive.getFile(id, 'id,name,mimeType')
+  } catch (e) {
+    if (e instanceof DriveError && e.status === 404) throw new DriveError(notFound, 404)
+    throw e
+  }
+  if (folder.mimeType !== FOLDER_MIME) throw new DriveError('Der Link zeigt auf eine Datei, nicht auf einen Ordner')
+  return folder
+}
+
 /**
- * Switches the books folder (Drive link or id; null = back to the app folder) and syncs.
+ * Switches the books folder (Drive link, folder name or id; null = back to the app folder) and syncs.
  * Must run right after a tap: it may need the login popup.
  */
 export async function setBooksFolder(link: string | null, opts: SyncOptions = {}): Promise<void> {
@@ -204,17 +230,7 @@ export async function setBooksFolder(link: string | null, opts: SyncOptions = {}
     await drive.setAppProperties(app.id, { booksFolderId: null })
     await patchDriveState({ appFolderId: app.id, booksFolderId: undefined, booksFolderName: APP_FOLDER_NAME })
   } else {
-    const id = folderIdFromLink(link)
-    if (!id) throw new DriveError('Das ist kein Link zu einem Google-Drive-Ordner')
-    let folder: DriveFile
-    try {
-      folder = await drive.getFile(id, 'id,name,mimeType')
-    } catch (e) {
-      if (e instanceof DriveError && e.status === 404)
-        throw new DriveError('Ordner nicht gefunden – stimmt der Link, und kannst du den Ordner mit diesem Google-Konto öffnen?', 404)
-      throw e
-    }
-    if (folder.mimeType !== FOLDER_MIME) throw new DriveError('Der Link zeigt auf eine Datei, nicht auf einen Ordner')
+    const folder = await resolveFolder(drive, link)
     await drive.setAppProperties(app.id, { booksFolderId: folder.id })
     await patchDriveState({ appFolderId: app.id, booksFolderId: folder.id, booksFolderName: folder.name })
   }

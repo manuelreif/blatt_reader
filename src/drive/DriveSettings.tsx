@@ -1,6 +1,6 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useEffect, useState } from 'react'
-import { statusText } from './DriveBar'
+import { BooksFolderLink, statusText } from './DriveBar'
 import {
   APP_FOLDER_NAME,
   disconnectDrive,
@@ -69,7 +69,7 @@ export function DriveSettings() {
   return (
     <div data-testid="drive-settings">
       <p>
-        Bücherordner: <strong>{state.booksFolderName ?? APP_FOLDER_NAME}</strong>
+        Bücherordner: <BooksFolderLink state={state} />
         {!state.booksFolderId && <span className="muted"> (in „Meine Ablage“, von der App angelegt)</span>}
       </p>
       <p className="muted">
@@ -85,13 +85,13 @@ export function DriveSettings() {
       >
         <input
           className="drive-link"
-          type="text" // not "url": a bare folder id is fine too
+          type="text" // not "url": a folder name or bare id is fine too
           inputMode="url"
           autoComplete="off"
-          placeholder="Link zu einem anderen Drive-Ordner"
+          placeholder="Name oder Link eines anderen Drive-Ordners"
           value={link}
           onChange={e => setLink(e.target.value)}
-          aria-label="Link zu einem anderen Drive-Ordner"
+          aria-label="Name oder Link eines anderen Drive-Ordners"
         />
         <button type="submit" disabled={busy || !link.trim()}>
           Ordner übernehmen

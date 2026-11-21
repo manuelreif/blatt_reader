@@ -134,6 +134,22 @@ describe('syncDrive (two devices)', () => {
     await expect(setBooksFolder(file.id, device(fake))).rejects.toThrow('nicht auf einen Ordner')
   })
 
+  it('finds the books folder by its name', async () => {
+    const fake = new FakeDrive()
+    const mine = fake.folder('book-app-folder')
+    fake.add({ name: 'novel.epub', parents: [mine.id], content: 'N' })
+    await syncDrive(device(fake))
+    await setBooksFolder('  book-app-folder ', device(fake))
+    await syncDrive(device(fake))
+    expect(await ids()).toEqual(['book:novel.epub'])
+    expect(await getDriveState()).toMatchObject({ booksFolderId: mine.id, booksFolderName: 'book-app-folder' })
+
+    await expect(setBooksFolder('no-such-folder', device(fake))).rejects.toThrow('Kein Ordner namens „no-such-folder“')
+    fake.folder('Bücher')
+    fake.folder('Bücher', mine.id)
+    await expect(setBooksFolder('Bücher', device(fake))).rejects.toThrow('2 Ordner namens „Bücher“')
+  })
+
   it('in the background only runs with a valid token and asks for a tap otherwise', async () => {
     const fake = new FakeDrive()
     const background = { ...device(fake), interactive: false }

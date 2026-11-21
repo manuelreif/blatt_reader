@@ -145,6 +145,9 @@ export function driveClient(token: string, fetchImpl: typeof fetch = fetch) {
         orderBy: 'createdTime',
       }),
 
+    /** Folders with exactly this name anywhere the user can see (My Drive, shared with me, shared drives). */
+    findFoldersByName: (name: string) => search(`mimeType = ${quote(FOLDER_MIME)} and name = ${quote(name)} and trashed = false`),
+
     findFile: async (name: string, parentId: string): Promise<DriveFile | undefined> =>
       (await search(`name = ${quote(name)} and ${quote(parentId)} in parents and trashed = false`, { orderBy: 'createdTime' }))[0],
 

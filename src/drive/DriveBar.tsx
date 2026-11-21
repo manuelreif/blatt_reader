@@ -1,6 +1,18 @@
 import { useEffect } from 'react'
-import { syncDrive, useDriveState, useDriveStatus, type DriveStatus } from './driveSync'
+import { APP_FOLDER_NAME, syncDrive, useDriveState, useDriveStatus, type DriveState, type DriveStatus } from './driveSync'
 import { driveConfigured, preloadGis } from './googleAuth'
+
+/** The books folder's name, linked to the folder in Google Drive once its id is known. */
+export function BooksFolderLink({ state }: { state: DriveState }) {
+  const id = state.booksFolderId ?? state.appFolderId
+  const name = state.booksFolderName ?? APP_FOLDER_NAME
+  if (!id) return <strong>{name}</strong>
+  return (
+    <a href={`https://drive.google.com/drive/folders/${encodeURIComponent(id)}`} target="_blank" rel="noopener noreferrer">
+      <strong>{name}</strong>
+    </a>
+  )
+}
 
 export function statusText(s: DriveStatus): string {
   switch (s.phase) {
@@ -55,5 +67,16 @@ export function DriveBar() {
         <button onClick={() => void syncDrive({ interactive: true })}>Erneut versuchen</button>
       </div>
     )
-  return null
+  return (
+    <div className="drive-bar drive-bar-idle" data-testid="drive-bar">
+      <span>
+        Google Drive: Bücher aus <BooksFolderLink state={state} />
+      </span>
+      {state.lastSync && (
+        <span className="muted">
+          abgeglichen {new Date(state.lastSync).toLocaleString('de-AT', { dateStyle: 'short', timeStyle: 'short' })}
+        </span>
+      )}
+    </div>
+  )
 }

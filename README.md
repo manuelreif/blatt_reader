@@ -88,7 +88,8 @@ bleiben auf allen Geräten gleich:
 - **Berechtigungen:** Die App darf deine Drive-Dateien lesen und nur Dateien ändern, die sie selbst
   angelegt hat (Ordner „Vokabel-Reader“, Sync-Datei). Löschen kann sie nichts.
 
-**Einmal einrichten (ca. 10 Minuten, kostenlos):**
+**Einmal einrichten (ca. 10 Minuten, kostenlos).** Ausführlich und mit Hilfe bei Fehlermeldungen in
+[`docs/google-drive-einrichten.md`](docs/google-drive-einrichten.md), hier die Kurzfassung:
 
 1. <https://console.cloud.google.com> → neues Projekt (z. B. „Vokabel-Reader“) → **APIs & Dienste →
    Bibliothek → „Google Drive API“ aktivieren**. Ein Abrechnungskonto ist nicht nötig.
@@ -105,8 +106,9 @@ bleiben auf allen Geräten gleich:
    privaten Projekten normal.
 
 Danach legt die App in „Meine Ablage“ den Ordner **Vokabel-Reader** an; Bücher einfach dort hineinlegen.
-Einen anderen Ordner wählst du unter **Einstellungen → Google Drive** per Link (in Drive: Ordner →
-Teilen → Link kopieren); die anderen Geräte übernehmen die Wahl beim nächsten Abgleich.
+Einen anderen Ordner wählst du unter **Einstellungen → Google Drive** über seinen Namen (genau wie in
+Drive geschrieben) oder seinen Link (in Drive: Ordner → Teilen → Link kopieren). Gibt es mehrere Ordner
+mit dem Namen, braucht es den Link. Die anderen Geräte übernehmen die Wahl beim nächsten Abgleich.
 
 Grenzen: Eine LAN-Adresse wie `http://192.168.…` lässt Google nicht zu, am Handy also erst nach dem
 Deploy. Fragt Google im Status „Testen“ alle 7 Tage neu nach, den Status auf **In Produktion** stellen
