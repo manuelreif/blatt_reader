@@ -1,0 +1,13 @@
+node_modules/
+dist/
+dev-dist/
+.cache/
+.env
+.env.local
+.dev.vars
+public/dict/
+test-results/
+playwright-report/
+e2e/fixtures/generated/
+*.log
+.wrangler/
