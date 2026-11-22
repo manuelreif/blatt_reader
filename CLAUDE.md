@@ -183,18 +183,24 @@ Markierungen mit Farben, Notizen und Liste pro Buch, mit Sicherung und Drive-Abg
 Einstellungen), Farbschema Navy/Creme aus dem Logo, Blatt-Muster als Wasserzeichen im Hintergrund.
 Reader-Leiste läuft am Handy nicht mehr über den Bildschirmrand hinaus.
 
+**Live (22.11.2026):** https://<projekt>.pages.dev (Cloudflare Pages, Projekt `<projekt>`, Branch `main`,
+Secrets `DEEPL_API_KEY` und `APP_PASSWORD`). Deploy: `npm run build && npx wrangler pages deploy dist
+--project-name <projekt> --branch main`. Echt geprüft: Passwortschutz in der Cloudflare-Laufzeit (lokal mit
+`wrangler pages dev` und live), DeepL über die Pages Function, App am Desktop, Google-Login am Desktop.
+Die Google-Client-ID (siehe `CLAUDE.local.md`) hat als JavaScript-Quellen die drei
+localhost-Ports, `https://<projekt>.pages.dev`.
+Eine neue Domain dort eintragen, sonst `origin_mismatch`.
+
 **Noch nie echt getestet** (nur simuliert bzw. mit generierten Fixtures):
-- Google Drive mit echtem Google: Login-Popup (auch in der installierten Android-PWA), Verhalten nach mehr als
+- Google Drive mit echtem Google: Login-Popup in der installierten Android-PWA, Verhalten nach mehr als
   1 h, ob `alt=media`-Downloads auf eine andere Domain umleiten (dann in die CSP `connect-src`), ob Google im
   Status „Testen“ alle 7 Tage neu fragt
 - Zwei-Finger-Tipp und Markieren per Auswahl-Griffen auf einem echten Android-Tablet (nur Unit-Test des
   Gesten-Automaten bzw. Desktop-Chrome)
-- Passwortschutz in der echten Cloudflare-Laufzeit (nur im Vite-Preview-Server getestet; lokal prüfbar
-  mit `npx wrangler pages dev dist --binding APP_PASSWORD=…`)
 - echter Copy-Paste-Durchgang mit claude.ai
 - echtes zweispaltiges PDF-Paper (Phase-0-Entscheidung: foliate-js-PDF reicht vorerst; Ausweg wäre
   `pdfjs-dist` hinter einem Reader-Adapter)
-- Deploy auf Cloudflare Pages und Installation als PWA auf Android
+- Installation als PWA auf Android
 
 **Phase 2 (offen):**
 - gespeicherte Wörter im Text farbig markieren (CSS Custom Highlight API wie bei den Markierungen, Status-Farben
@@ -203,7 +209,6 @@ Reader-Leiste läuft am Handy nicht mehr über den Bildschirmrand hinaus.
   Eintippen mit Levenshtein-Toleranz
 - weitere Claude-Vorlagen (Quizrunde, Fachglossar pro Paper, Mini-Geschichte, „Satz erklären“)
 - Dubletten zusammenführen, Anki-Export
-- Cloudflare-Deploy + Android
 - Drive: geänderte Dateien neu laden, Einstellungen mit Zeitstempel abgleichen, Abgleich ohne Tippen
   (Refresh-Token über eine Server-Funktion)
 

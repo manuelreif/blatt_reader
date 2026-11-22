@@ -42,16 +42,28 @@ DeepL blockiert Aufrufe direkt aus dem Browser. Darum läuft `/api/translate` al
 Cloudflare Pages Function (`functions/api/translate.ts`), die den Key geheim hält.
 Davor sitzt ein Passwortschutz für die ganze App (`functions/_middleware.ts`).
 
+Einmal einrichten, und zwar in dieser Reihenfolge: erst Projekt und Secrets, dann hochladen. So ist
+die App nie ohne Passwort online.
+
 ```bash
 npx wrangler login
-npm run build:dict && npm run build
-npx wrangler pages deploy dist --project-name <projekt> --branch main
+npx wrangler pages project create <projekt> --production-branch main
 npx wrangler pages secret put DEEPL_API_KEY --project-name <projekt>
 npx wrangler pages secret put APP_PASSWORD --project-name <projekt>   # langes Passwort, z. B. vier Wörter
 ```
 
-`wrangler pages deploy` im Projektordner lädt den Ordner `functions/` automatisch mit hoch. Secrets
-gelten erst nach dem nächsten Deploy, also danach noch einmal `wrangler pages deploy …` ausführen.
+Danach bei jedem neuen Stand:
+
+```bash
+npm run build:dict && npm run build      # build:dict nur beim ersten Mal bzw. nach neuem Ding
+npx wrangler pages deploy dist --project-name <projekt> --branch main
+```
+
+`wrangler pages deploy` im Projektordner lädt den Ordner `functions/` automatisch mit hoch. Ein
+geändertes Secret gilt erst ab dem nächsten Deploy.
+
+Vor dem ersten Deploy lässt sich alles lokal in der echten Cloudflare-Laufzeit prüfen:
+`npx wrangler pages dev dist --binding APP_PASSWORD=test` (DeepL-Key und `APP_TOKEN` liest wrangler aus `.env`).
 
 **Passwortschutz:** Ist `APP_PASSWORD` gesetzt, liefert Cloudflare ohne Anmeldung nur eine
 Anmeldeseite aus, keine App, kein Wörterbuch und keine Übersetzung. Nach der Anmeldung bleibt das
