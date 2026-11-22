@@ -1,78 +1,218 @@
-// Draws the app icon (open book on a teal square) as PNGs without dependencies.
-import { deflateSync, crc32 } from 'node:zlib'
-import { writeFileSync } from 'node:fs'
+// Builds every logo asset from the traced originals in images/:
+//   images/Blatt-Logo.svg        round emblem (disc, ring, open book turning into a leaf)
+//   images/Blatt-Reader-Big.svg  emblem with the "Blatt - Reader" lettering
+// The traced disc and ring are slightly out of round, so they are replaced by exact
+// circles; only the book/leaf glyph and the lettering are taken over as paths.
+//
+// Output:
+//   src/brand/logoPaths.ts        path data for the React components (generated, do not edit)
+//   public/icon.svg               favicon
+//   public/icon-192.png, icon-512.png           round emblem, transparent corners
+//   public/icon-maskable-512.png, apple-touch-icon.png   full-bleed navy square (Android/iOS crop it)
+//   public/brand/pattern.svg      tile for the background watermark (used as a CSS mask)
+//   public/brand/blatt-reader.svg emblem + lettering (README, sharing)
+//
+// Run: node scripts/make-icons.mjs   (PNGs are rendered with Playwright's Chromium)
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { chromium } from 'playwright'
 
-const BG = [0x2f, 0x6f, 0x5e]
-const PAGE = [0xf7, 0xf5, 0xf0]
-const LINE = [0xc9, 0xc3, 0xb5]
-
-function shade(x, y, maskable) {
-  // coordinates in 0..1; returns [r,g,b,a]
-  const pad = maskable ? 0 : 0.04
-  const r = maskable ? 0 : 0.2
-  const inSquare = (() => {
-    const lo = pad, hi = 1 - pad
-    if (x < lo || x > hi || y < lo || y > hi) return false
-    const cx = Math.min(Math.max(x, lo + r), hi - r)
-    const cy = Math.min(Math.max(y, lo + r), hi - r)
-    return (x - cx) ** 2 + (y - cy) ** 2 <= r * r + 1e-9
-  })()
-  if (!inSquare) return [0, 0, 0, 0]
-  const s = maskable ? 0.62 : 0.72 // book size
-  const bx = (x - 0.5) / s
-  const by = (y - 0.52) / s
-  // two pages: left and right, slightly tilted top edges
-  const halfW = 0.46, halfH = 0.3
-  const inBook = Math.abs(bx) <= halfW && by <= halfH && by >= -halfH + Math.abs(bx) * 0.18
-  if (inBook) {
-    if (Math.abs(bx) < 0.012) return [...BG, 255] // spine
-    const lineY = (by + halfH) / (2 * halfH)
-    const tx = Math.abs(bx)
-    for (let k = 1; k <= 4; k++) {
-      const ly = -halfH + Math.abs(bx) * 0.18 + k * 0.11
-      if (Math.abs(by - ly) < 0.012 && tx > 0.08 && tx < 0.38 && lineY < 0.95) return [...LINE, 255]
-    }
-    return [...PAGE, 255]
-  }
-  return [...BG, 255]
+const root = new URL('../', import.meta.url)
+const read = f => readFileSync(new URL(f, root), 'utf8')
+const write = (f, s) => {
+  mkdirSync(new URL('.', new URL(f, root)), { recursive: true })
+  writeFileSync(new URL(f, root), s)
+  console.log('wrote', f)
 }
 
-function png(size, maskable) {
-  const SS = 4
-  const raw = Buffer.alloc((size * 4 + 1) * size)
-  for (let py = 0; py < size; py++) {
-    raw[py * (size * 4 + 1)] = 0
-    for (let px = 0; px < size; px++) {
-      const acc = [0, 0, 0, 0]
-      for (let sy = 0; sy < SS; sy++)
-        for (let sx = 0; sx < SS; sx++) {
-          const c = shade((px + (sx + 0.5) / SS) / size, (py + (sy + 0.5) / SS) / size, maskable)
-          acc[0] += c[0] * c[3]; acc[1] += c[1] * c[3]; acc[2] += c[2] * c[3]; acc[3] += c[3]
-        }
-      const o = py * (size * 4 + 1) + 1 + px * 4
-      const a = acc[3] / (SS * SS)
-      raw[o] = a ? acc[0] / acc[3] : 0
-      raw[o + 1] = a ? acc[1] / acc[3] : 0
-      raw[o + 2] = a ? acc[2] / acc[3] : 0
-      raw[o + 3] = a
-    }
-  }
-  const chunk = (type, data) => {
-    const len = Buffer.alloc(4); len.writeUInt32BE(data.length)
-    const td = Buffer.concat([Buffer.from(type), data])
-    const crc = Buffer.alloc(4); crc.writeUInt32BE(crc32(td))
-    return Buffer.concat([len, td, crc])
-  }
-  const ihdr = Buffer.alloc(13)
-  ihdr.writeUInt32BE(size, 0); ihdr.writeUInt32BE(size, 4)
-  ihdr[8] = 8; ihdr[9] = 6; ihdr[10] = 0; ihdr[11] = 0; ihdr[12] = 0
-  return Buffer.concat([
-    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
-    chunk('IHDR', ihdr), chunk('IDAT', deflateSync(raw)), chunk('IEND', Buffer.alloc(0)),
-  ])
+export const NAVY = '#141f2d'
+export const CREAM = '#e6dfca'
+
+// --- path parsing (the traced files only use absolute M, L, C, Z) ---------------
+
+function subpaths(svg, id) {
+  const m = svg.match(new RegExp(`<path id="${id}"[^>]*\\sd="([^"]*)"`))
+  if (!m) throw new Error(`path #${id} not found`)
+  return m[1]
+    .trim()
+    .split(/(?=M)/)
+    .map(s => s.trim())
+    .filter(Boolean)
 }
 
-writeFileSync('public/icon-192.png', png(192, false))
-writeFileSync('public/icon-512.png', png(512, false))
-writeFileSync('public/icon-maskable-512.png', png(512, true))
-console.log('Icons geschrieben')
+function parse(d) {
+  const out = []
+  for (const [, cmd, args] of d.matchAll(/([MLCZ])([^MLCZ]*)/g)) {
+    const n = (args.match(/-?\d*\.?\d+/g) ?? []).map(Number)
+    const pts = []
+    for (let i = 0; i < n.length; i += 2) pts.push([n[i], n[i + 1]])
+    out.push({ cmd, pts })
+  }
+  return out
+}
+
+const allPoints = paths => paths.flatMap(p => p.flatMap(s => s.pts))
+
+function bbox(pts) {
+  const xs = pts.map(p => p[0])
+  const ys = pts.map(p => p[1])
+  return { x0: Math.min(...xs), x1: Math.max(...xs), y0: Math.min(...ys), y1: Math.max(...ys) }
+}
+
+/** circle from the outline's bounding box (the traced points are not evenly spaced) */
+function fitCircle(pts) {
+  const b = bbox(pts)
+  return { cx: (b.x0 + b.x1) / 2, cy: (b.y0 + b.y1) / 2, r: (b.x1 - b.x0 + b.y1 - b.y0) / 4 }
+}
+
+const num = n => {
+  const s = (Math.round(n * 10) / 10).toFixed(1)
+  return s.endsWith('.0') ? s.slice(0, -2) : s
+}
+
+function emit(paths, tf) {
+  let d = ''
+  for (const p of paths)
+    for (const { cmd, pts } of p) {
+      d += cmd
+      d += pts
+        .map(([x, y]) => tf(x, y))
+        .map(([x, y]) => `${num(x)} ${num(y)}`)
+        .join(' ')
+    }
+  return d
+}
+
+// --- emblem: 512 x 512, disc centered -------------------------------------------
+
+const logo = read('images/Blatt-Logo.svg')
+const disc = fitCircle(allPoints([parse(subpaths(logo, 'emblem')[0])]))
+const [ringOuter, ringInner, leaf, page] = subpaths(logo, 'blatt-und-ring').map(parse)
+const rOuter = fitCircle(allPoints([ringOuter])).r
+const rInner = fitCircle(allPoints([ringInner])).r
+
+const S = 256 / disc.r
+const RING_R = +(((rOuter + rInner) / 2) * S).toFixed(1)
+const RING_W = +((rOuter - rInner) * S).toFixed(1)
+
+// center the glyph's bounding box on the disc
+const gb = bbox(allPoints([leaf, page]))
+const gcx = (gb.x0 + gb.x1) / 2
+const gcy = (gb.y0 + gb.y1) / 2
+const GLYPH = emit([page, leaf], (x, y) => [256 + (x - gcx) * S, 256 + (y - gcy) * S])
+const GLYPH_W = (gb.x1 - gb.x0) * S
+const GLYPH_H = (gb.y1 - gb.y0) * S
+
+// --- lettering: height of the text box = 100 -----------------------------------
+
+const big = read('images/Blatt-Reader-Big.svg')
+const text = subpaths(big, 'schriftzug').map(parse)
+const tb = bbox(allPoints(text))
+const T = 100 / (tb.y1 - tb.y0)
+const TEXT = emit(text, (x, y) => [(x - tb.x0) * T, (y - tb.y0) * T])
+const TEXT_W = +((tb.x1 - tb.x0) * T).toFixed(1)
+// the cap height of "B" (first glyph, outer contour) for optical centering against the emblem
+const bCap = bbox(text[12].flatMap(s => s.pts))
+const CAP_TOP = +((bCap.y0 - tb.y0) * T).toFixed(1)
+const CAP_BOTTOM = +((bCap.y1 - tb.y0) * T).toFixed(1)
+
+write(
+  'src/brand/logoPaths.ts',
+  `// Generated by scripts/make-icons.mjs from images/*.svg. Do not edit by hand.
+
+/** emblem in a 512 x 512 box: disc r = 256, ring and book/leaf glyph centered */
+export const EMBLEM = {
+  ringR: ${RING_R},
+  ringW: ${RING_W},
+  glyph: '${GLYPH}',
+} as const
+
+/** "Blatt - Reader" lettering, text box height 100 */
+export const LETTERING = {
+  width: ${TEXT_W},
+  capTop: ${CAP_TOP},
+  capBottom: ${CAP_BOTTOM},
+  d: '${TEXT}',
+} as const
+`,
+)
+
+// --- SVG builders -----------------------------------------------------------------
+
+const emblemSvg = ({ disc = NAVY, ink = CREAM } = {}) =>
+  `<circle cx="256" cy="256" r="256" fill="${disc}"/>` +
+  `<circle cx="256" cy="256" r="${RING_R}" fill="none" stroke="${ink}" stroke-width="${RING_W}"/>` +
+  `<path fill="${ink}" d="${GLYPH}"/>`
+
+write(
+  'public/icon.svg',
+  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><title>Blatt-Reader</title>${emblemSvg()}</svg>\n`,
+)
+
+// lockup: emblem height 100, gap 21, cap height 31 (proportions of the original artwork)
+{
+  const capH = 31
+  const k = capH / (CAP_BOTTOM - CAP_TOP)
+  const tx = 100 + 21
+  const ty = 50 - ((CAP_TOP + CAP_BOTTOM) / 2) * k
+  const width = +(tx + TEXT_W * k).toFixed(1)
+  write(
+    'public/brand/blatt-reader.svg',
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="-4 -4 ${width + 8} 108"><title>Blatt-Reader</title>` +
+      `<g transform="scale(${100 / 512})">${emblemSvg()}</g>` +
+      `<path fill="${NAVY}" fill-rule="evenodd" transform="translate(${num(tx)} ${num(ty)}) scale(${k.toFixed(4)})" d="${TEXT}"/></svg>\n`,
+  )
+}
+
+// watermark tile: two glyphs on a staggered grid, slightly turned (color comes from CSS)
+{
+  const size = 200
+  const s = 62 / GLYPH_W
+  const at = (x, y) =>
+    `<path transform="translate(${x} ${y}) rotate(-12) scale(${s.toFixed(4)}) translate(-256 -256)" d="${GLYPH}"/>`
+  write(
+    'public/brand/pattern.svg',
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">` +
+      at(50, 50) +
+      at(150, 150) +
+      `</svg>\n`,
+  )
+}
+
+// --- PNG icons ----------------------------------------------------------------------
+
+// maskable: the launcher crops to a circle/squircle, the safe zone is the inner 80 %
+const maskableSvg = () => {
+  const ring = 0.37 * 512
+  const k = ring / RING_R
+  return (
+    `<rect width="512" height="512" fill="${NAVY}"/>` +
+    `<g transform="translate(256 256) scale(${k.toFixed(4)}) translate(-256 -256)">` +
+    `<circle cx="256" cy="256" r="${RING_R}" fill="none" stroke="${CREAM}" stroke-width="${RING_W}"/>` +
+    `<path fill="${CREAM}" d="${GLYPH}"/></g>`
+  )
+}
+
+const pngs = [
+  { file: 'public/icon-192.png', size: 192, body: emblemSvg() },
+  { file: 'public/icon-512.png', size: 512, body: emblemSvg() },
+  { file: 'public/icon-maskable-512.png', size: 512, body: maskableSvg() },
+  { file: 'public/apple-touch-icon.png', size: 180, body: maskableSvg() },
+]
+
+const browser = await chromium.launch()
+try {
+  for (const { file, size, body } of pngs) {
+    const page = await browser.newPage({ viewport: { width: size, height: size } })
+    await page.setContent(
+      `<style>html,body{margin:0;background:transparent}svg{display:block}</style>` +
+        `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 512 512">${body}</svg>`,
+    )
+    writeFileSync(new URL(file, root), await page.screenshot({ omitBackground: true }))
+    console.log('wrote', file)
+    await page.close()
+  }
+} finally {
+  await browser.close()
+}
+
+console.log({ disc, RING_R, RING_W, GLYPH_W: GLYPH_W.toFixed(1), GLYPH_H: GLYPH_H.toFixed(1), TEXT_W, CAP_TOP, CAP_BOTTOM })

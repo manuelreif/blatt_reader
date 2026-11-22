@@ -14,10 +14,10 @@ Menüs ab und zu um. Findest du einen Punkt nicht, hilft das Suchfeld oben in de
    nutzen soll.
 2. Beim ersten Besuch wählst du ein Land und akzeptierst die Nutzungsbedingungen.
 3. Klick oben links auf die Projektauswahl und dann auf **Neues Projekt** (New project):
-   - Projektname: `Vokabel-Reader`
+   - Projektname: `Blatt-Reader`
    - Organisation bzw. Speicherort: **Keine Organisation** lassen
    - **Erstellen** (Create)
-4. Warte auf die Benachrichtigung und wähl dann oben in der Projektauswahl **Vokabel-Reader**. Alle
+4. Warte auf die Benachrichtigung und wähl dann oben in der Projektauswahl **Blatt-Reader**. Alle
    weiteren Schritte gelten für das Projekt, das dort gerade ausgewählt ist.
 
 ## 2. Google Drive API aktivieren
@@ -32,7 +32,7 @@ Fehlt dieser Schritt, meldet die App: „Die Google Drive API ist im Google-Clou
 1. Öffne Menü ☰ → **Google Auth Platform** und klick auf **Jetzt starten** (Get started). Im Suchfeld
    findest du sie auch unter „OAuth-Zustimmungsbildschirm“ (OAuth consent screen).
 2. Der Assistent fragt nacheinander:
-   - **App-Informationen:** App-Name `Vokabel-Reader`, Nutzersupport-E-Mail: deine Google-Adresse.
+   - **App-Informationen:** App-Name `Blatt-Reader`, Nutzersupport-E-Mail: deine Google-Adresse.
    - **Zielgruppe:** **Extern** (External). „Intern“ gibt es nur mit Google Workspace.
    - **Kontaktdaten:** deine Google-Adresse.
    - **Fertigstellen:** Bestätige die Richtlinie zu Nutzerdaten und klick auf **Erstellen**.
@@ -70,10 +70,10 @@ Neue oder geänderte JavaScript-Quellen gelten manchmal erst nach ein paar Minut
 3. Öffne **genau** `http://localhost:5173`. Mit `127.0.0.1` oder einer LAN-IP lehnt Google die Anmeldung ab.
 4. Tipp auf **Einstellungen → Google Drive → Mit Google verbinden**.
 5. Google warnt: „Google hat diese App nicht überprüft“. Klick auf **Erweitert** (Advanced) und dann auf
-   **Weiter zu Vokabel-Reader (unsicher)**. Bei eigenen Projekten ist diese Warnung normal.
+   **Weiter zu Blatt-Reader (unsicher)**. Bei eigenen Projekten ist diese Warnung normal.
 6. Auf der Berechtigungsseite setzt du **beide Häkchen**, dann **Weiter**. Das eine erlaubt, Drive-Dateien
    anzusehen, das andere, die von der App angelegten Dateien zu bearbeiten.
-7. In „Meine Ablage“ liegt jetzt der Ordner **Vokabel-Reader**. Leg ein EPUB oder PDF hinein und tippe in
+7. In „Meine Ablage“ liegt jetzt der Ordner **Blatt-Reader**. Leg ein EPUB oder PDF hinein und tippe in
    der App auf **Jetzt abgleichen**.
 
 ## 6. Später: Cloudflare und Handy

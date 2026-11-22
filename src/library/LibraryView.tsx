@@ -1,5 +1,6 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { Emblem, Glyph } from '../brand/Logo'
 import { deleteBook, quizBooks, type QuizBook } from '../db/repo'
 import { db, type Book } from '../db/schema'
 import { DriveBar } from '../drive/DriveBar'
@@ -16,6 +17,7 @@ function Cover({ book }: { book: Book }) {
   if (url) return <img src={url} alt="" className="cover" />
   return (
     <div className="cover cover-placeholder">
+      <Glyph />
       <span>{book.format.toUpperCase()}</span>
     </div>
   )
@@ -93,6 +95,7 @@ export function LibraryView() {
       {error && <p className="error">{error}</p>}
       {books && books.length === 0 && (
         <div className="empty">
+          <Emblem />
           <p>Noch keine Bücher. Öffne eine EPUB- oder PDF-Datei (oder zieh sie hierher).</p>
           <p className="muted">Die Dateien bleiben auf diesem Gerät, im Speicher des Browsers.</p>
         </div>

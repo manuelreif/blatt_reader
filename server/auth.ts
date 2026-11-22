@@ -3,6 +3,8 @@
 // Without APP_PASSWORD the gate is off. The session cookie is signed with the
 // password itself (HMAC-SHA256), so changing the password logs out every device.
 
+import { EMBLEM, LETTERING } from '../src/brand/logoPaths.ts'
+
 export interface AuthEnv {
   APP_PASSWORD?: string
 }
@@ -21,7 +23,17 @@ export const SESSION_DAYS = 400
 const RENEW_BELOW_DAYS = 200
 
 /** Reachable without a session: needed to install the app (browsers fetch the manifest without cookies). */
-const PUBLIC_PATHS = new Set(['/manifest.webmanifest', '/icon.svg', '/icon-192.png', '/icon-512.png', '/icon-maskable-512.png', '/favicon.ico'])
+const PUBLIC_PATHS = new Set([
+  '/manifest.webmanifest',
+  '/icon.svg',
+  '/icon-192.png',
+  '/icon-512.png',
+  '/icon-maskable-512.png',
+  '/apple-touch-icon.png',
+  '/favicon.ico',
+  // background pattern of the login page
+  '/brand/pattern.svg',
+])
 
 const enc = new TextEncoder()
 
@@ -74,6 +86,11 @@ function cookieHeader(url: URL, value: string, maxAgeSeconds: number): string {
 
 const escapeHtml = (s: string) => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!)
 
+const LOGIN_LOGO = `<div class="logo" role="img" aria-label="Blatt-Reader">
+  <svg class="emblem" viewBox="0 0 512 512" aria-hidden="true"><circle cx="256" cy="256" r="256" fill="#141f2d"/><circle cx="256" cy="256" r="${EMBLEM.ringR}" fill="none" stroke="#e6dfca" stroke-width="${EMBLEM.ringW}"/><path fill="#e6dfca" d="${EMBLEM.glyph}"/></svg>
+  <svg class="lettering" viewBox="0 0 ${LETTERING.width} 100" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="${LETTERING.d}"/></svg>
+</div>`
+
 export function loginPage(error?: string): string {
   return `<!doctype html>
 <html lang="de">
@@ -81,29 +98,40 @@ export function loginPage(error?: string): string {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
-<meta name="theme-color" content="#2f6f5e">
-<title>Anmelden · Vokabel-Reader</title>
+<meta name="theme-color" content="#141f2d">
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<title>Anmelden · Blatt-Reader</title>
 <style>
-  :root { --bg: #f7f5f0; --surface: #fff; --text: #1f2421; --muted: #6b716d; --line: #dcd8cf; --accent: #2f6f5e; --accent-text: #fff; --danger: #b3261e; }
+  :root { --bg: #f4efe3; --surface: #fffcf5; --text: #18222f; --muted: #5d6877; --line: #e1d9c5; --accent: #1f3350; --accent-text: #f7f3e8; --danger: #a8322a; --watermark: rgb(20 31 45 / 0.04); color-scheme: light dark; }
   @media (prefers-color-scheme: dark) {
-    :root { --bg: #161917; --surface: #202422; --text: #e8ebe9; --muted: #9aa29d; --line: #353b37; --accent: #6cc2a8; --accent-text: #0e1a16; --danger: #ff8a80; }
+    :root { --bg: #0f1722; --surface: #172231; --text: #ebe5d3; --muted: #9ba6b3; --line: #273548; --accent: #e2d5ad; --accent-text: #141f2d; --danger: #f0958b; --watermark: rgb(230 223 202 / 0.035); }
   }
   * { box-sizing: border-box; }
-  body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 16px; background: var(--bg); color: var(--text);
+  body { margin: 0; min-height: 100vh; min-height: 100dvh; display: grid; place-items: center; padding: 16px; background: var(--bg); color: var(--text);
     font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
-  form { width: 100%; max-width: 340px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 24px; }
-  h1 { font-size: 1.25rem; margin: 0 0 4px; }
-  p { margin: 0 0 16px; color: var(--muted); }
+  body::before { content: ""; position: fixed; inset: 0; z-index: -1; background: var(--watermark);
+    -webkit-mask: url("/brand/pattern.svg") 0 0 / 200px 200px repeat; mask: url("/brand/pattern.svg") 0 0 / 200px 200px repeat; }
+  main { width: 100%; max-width: 360px; }
+  .logo { display: flex; align-items: center; justify-content: center; gap: 14px; height: 60px; margin-bottom: 28px; }
+  .logo .emblem { width: 60px; height: 60px; flex: none; }
+  .logo .lettering { height: 25px; width: auto; }
+  form { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 24px;
+    box-shadow: 0 1px 2px rgb(20 31 45 / 0.06), 0 10px 30px rgb(20 31 45 / 0.08); }
+  h1 { font-size: 1.15rem; margin: 0 0 4px; }
+  p { margin: 0 0 18px; color: var(--muted); }
   label { display: block; font-size: .875rem; color: var(--muted); margin-bottom: 4px; }
   input, button { width: 100%; font: inherit; padding: 10px 12px; border-radius: 10px; }
   input { border: 1px solid var(--line); background: var(--bg); color: var(--text); margin-bottom: 16px; }
-  button { border: 1px solid var(--accent); background: var(--accent); color: var(--accent-text); cursor: pointer; }
+  input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent); }
+  button { border: 1px solid var(--accent); background: var(--accent); color: var(--accent-text); font-weight: 600; cursor: pointer; }
   .error { color: var(--danger); }
 </style>
 </head>
 <body>
+<main>
+${LOGIN_LOGO}
 <form method="post" action="/login">
-  <h1>Vokabel-Reader</h1>
+  <h1>Anmelden</h1>
   <p>Bitte einmal anmelden. Dieses Gerät bleibt danach angemeldet.</p>
   ${error ? `<p class="error" role="alert">${escapeHtml(error)}</p>` : ''}
   <input type="text" name="username" value="vokabel-reader" autocomplete="username" hidden>
@@ -111,6 +139,7 @@ export function loginPage(error?: string): string {
   <input id="password" type="password" name="password" autocomplete="current-password" required autofocus>
   <button type="submit">Anmelden</button>
 </form>
+</main>
 </body>
 </html>`
 }
@@ -118,7 +147,7 @@ export function loginPage(error?: string): string {
 const LOGIN_HEADERS = {
   'content-type': 'text/html; charset=utf-8',
   'cache-control': 'no-store',
-  'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'",
+  'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'",
   'x-robots-tag': 'noindex',
 }
 

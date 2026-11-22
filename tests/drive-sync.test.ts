@@ -96,7 +96,7 @@ describe('syncDrive (two devices)', () => {
     await word('estimator')
     const first = await syncDrive(device(fake))
     expect(first).toMatchObject({ books: { imported: 0 }, merged: null })
-    const app = fake.find('Vokabel-Reader')!
+    const app = fake.find('Blatt-Reader')!
     expect(app.appProperties).toEqual({ vokabelReader: 'root' })
     expect(JSON.parse(fake.text(fake.find(SYNC_FILE)!.id)).terms.map((t: { id: string }) => t.id)).toEqual(['estimator'])
     expect(await getDriveState()).toMatchObject({ connected: true, appFolderId: app.id, lastResult: 'alles aktuell' })
@@ -109,7 +109,7 @@ describe('syncDrive (two devices)', () => {
     await reset()
     const second = await syncDrive(device(fake))
     expect(second).toMatchObject({ books: { imported: 1 }, merged: { added: 1 } })
-    expect([...fake.files.values()].filter(f => f.name === 'Vokabel-Reader')).toHaveLength(1)
+    expect([...fake.files.values()].filter(f => f.name === 'Blatt-Reader')).toHaveLength(1)
     expect(await ids()).toEqual(['book:paper.pdf'])
     expect(await db.terms.get('estimator')).toBeDefined()
     expect((await getDriveState()).lastResult).toBe('1 neues Buch, 1 neues Wort')

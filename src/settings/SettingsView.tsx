@@ -1,5 +1,6 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useEffect, useRef, useState } from 'react'
+import { Lockup } from '../brand/Logo'
 import { CARD_TYPES, type CardType } from '../db/schema'
 import { DriveSettings } from '../drive/DriveSettings'
 import {
@@ -284,6 +285,11 @@ export function SettingsView() {
         </button>
       </div>
       {msg && <p className="ok">{msg}</p>}
+
+      <footer className="about">
+        <Lockup />
+        <p className="muted">EPUB und PDF lesen, Wörter im Satz nachschlagen, mit FSRS wiederholen.</p>
+      </footer>
     </section>
   )
 }

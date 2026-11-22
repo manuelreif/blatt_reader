@@ -1,6 +1,6 @@
-# Vokabel-Reader – Hinweise für die Weiterarbeit
+# Blatt-Reader – Hinweise für die Weiterarbeit
 
-EPUB/PDF-Reader als PWA zum Englischlernen: Wort antippen → Offline-Wörterbuch + DeepL-Übersetzung
+EPUB/PDF-Reader als PWA zum Englischlernen (bis 22.11.2026 „Vokabel-Reader“): Wort antippen → Offline-Wörterbuch + DeepL-Übersetzung
 im Satzkontext → speichern mit Satz → Quiz mit FSRS. Anreicherung (Erklärung, Beispiel, IPA,
 Ablenker) durch Claude per Copy-Paste. Setup, Deploy und Bedienung: siehe `README.md`.
 
@@ -24,7 +24,7 @@ npm test               # Vitest, 117 Tests
 npm run e2e            # Playwright gegen Dev-Server (Port 5179), erzeugt Fixtures selbst
 npm run build && E2E_PREVIEW=1 npm run e2e   # gegen Produktions-Build (Port 4179), inkl. CSP- und Passwort-Test
 npm run build:dict     # Ding laden (.cache/) → public/dict/en-de/*.json
-node scripts/make-icons.mjs                 # PWA-Icons neu erzeugen
+node scripts/make-icons.mjs                 # Logo-Bausteine + PWA-Icons aus images/*.svg neu erzeugen
 ```
 
 Vor jedem Commit: `npm run typecheck && npm test && npm run e2e`.
@@ -33,6 +33,20 @@ Vor jedem Commit: `npm run typecheck && npm test && npm run e2e`.
 
 - Vite 8 + React 19 + TS (strict), Hash-Router in `src/router.ts`, keine UI-Bibliothek, CSS in `src/styles.css`
   (CSS-Variablen, Hell/Dunkel).
+- **Logo und Design:** Quellen in `images/` (nachgezeichnete SVGs vom Nutzer). `scripts/make-icons.mjs` macht
+  daraus `src/brand/logoPaths.ts` (Pfade, generiert), Favicon, PWA-Icons (rund; maskable und Apple randlos navy),
+  `public/brand/pattern.svg` (Wasserzeichen-Kachel) und `public/brand/blatt-reader.svg` (Logo mit Schriftzug).
+  Kreis und Ring sind dabei exakte Kreise, nur Blatt-Symbol und Schriftzug kommen aus der Vorlage.
+  Komponenten in `src/brand/Logo.tsx` (`Emblem`, `Glyph`, `Lettering`, `Lockup`), Farben über `--logo-disc`/`--logo-ink`.
+  Palette: Navy `#141f2d` + Creme `#e6dfca`, hell = Creme-Papier mit Navy-Schrift, dunkel = Navy mit Creme.
+  Platzierung: rundes Emblem = Favicon/App-Icon, Reader-Leiste (zurück zur Bibliothek), leere Bibliothek,
+  Ladeanzeige im Reader, Cover-Platzhalter (nur Blatt); Logo mit Schriftzug = Kopfleiste (unter 720 px nur Emblem),
+  Anmeldeseite, Fuß der Einstellungen, README. Wasserzeichen = `.app::before` (CSS-Maske, Farbe `--watermark`),
+  bewusst nicht im Reader, damit der Buchtext ruhig bleibt. Die Anmeldeseite (`server/auth.ts`) bringt ihre
+  Farben selbst mit; Palette dort mitziehen.
+- **Name:** sichtbar überall „Blatt-Reader“. Interne Kennungen heißen absichtlich weiter `vokabel-reader`:
+  DB-Name, `app` in Sicherungen, Sync-Datei `vokabel-reader-sync.json`, `appProperties.vokabelReader`,
+  verstecktes Benutzerfeld der Anmeldeseite (Passwortmanager). Nicht umbenennen, sonst passen alte Daten nicht mehr.
 - **Daten:** Dexie in `src/db/schema.ts` (DB `vokabel-reader`, Version 2: v1 + Tabellen `driveFiles`,
   `tombstones`; Version 3: + `highlights`). Zugriff zentral über `src/db/repo.ts` (`saveLookup`, `recordReview`, `loadQuizSession` …).
   Schema ändern = neue `this.version(n)` mit Upgrade, nie ältere Versionen umschreiben (Nutzerdaten liegen
@@ -89,7 +103,9 @@ Vor jedem Commit: `npm run typecheck && npm test && npm run e2e`.
     `drive.readonly` + `drive.file`. Token ca. 1 h in `localStorage` (`vr_google_token`), ein neues braucht
     eine Nutzergeste (Popup).
   - `driveApi.ts`: REST v3 mit injizierbarem `fetchImpl`. Uploads resumable (kein 5-MB-Limit).
-  - `driveSync.ts` (`syncDrive`): App-Ordner „Vokabel-Reader“ (gefunden über `appProperties.vokabelReader=root`,
+  - `driveSync.ts` (`syncDrive`): App-Ordner „Blatt-Reader“ (gefunden über `appProperties.vokabelReader=root`,
+    nicht über den Namen; vor der Umbenennung angelegte Ordner heißen „Vokabel-Reader“ und bleiben in Gebrauch,
+    angezeigt wird der echte Name aus `DriveState.appFolderName`,
     gewählter Bücherordner in `appProperties.booksFolderId`) → `syncBooks.ts` (neue Drive-IDs herunterladen →
     `importBook`; `driveFiles.state` `imported`/`dismissed`/`error`, `deleteBook` setzt `dismissed`) →
     `syncVocab.ts` (`vokabel-reader-sync.json` laden, `mergeBackup` ohne Einstellungen, Stand hochladen).
@@ -141,7 +157,7 @@ Vor jedem Commit: `npm run typecheck && npm test && npm run e2e`.
   mit der gecachten App und die Anmeldeseite erscheint nie. Der Preview-Server für E2E läuft mit
   `APP_PASSWORD=e2e-password` (`playwright.config.ts`), die Tests melden sich in `beforeEach` an.
 
-## Stand (21.11.2026)
+## Stand (22.11.2026)
 
 **Fertig (Phase 0 + MVP):** Bibliothek (Import, Cover, Fortschritt), Reader für EPUB und PDF (TOC,
 Schriftgröße, Zoom, Positionsregler), Nachschlage-Popup (Wörterbuch + DeepL, Vorlesen, Speichern,
@@ -162,6 +178,10 @@ zwischen Geräten zusammenführen (Grabsteine für gelöschte Wörter), Merge au
 Markierungen mit Farben, Notizen und Liste pro Buch, mit Sicherung und Drive-Abgleich.
 
 **Neu (21.11.2026):** Quiz pro Buch (Auswahl im Quiz, Link in der Bibliothek), Buchfilter in der Vokabelliste.
+
+**Neu (22.11.2026):** Umbenennung in „Blatt-Reader“, Logo (App-Icons, Kopfleiste, Reader, Anmeldeseite,
+Einstellungen), Farbschema Navy/Creme aus dem Logo, Blatt-Muster als Wasserzeichen im Hintergrund.
+Reader-Leiste läuft am Handy nicht mehr über den Bildschirmrand hinaus.
 
 **Noch nie echt getestet** (nur simuliert bzw. mit generierten Fixtures):
 - Google Drive mit echtem Google: Login-Popup (auch in der installierten Android-PWA), Verhalten nach mehr als

@@ -1,4 +1,6 @@
-# Vokabel-Reader
+<p align="center"><img src="public/brand/blatt-reader.svg" alt="Blatt-Reader" width="420"></p>
+
+# Blatt-Reader
 
 EPUB- und PDF-Reader zum Englischlernen. Ein Tipp auf ein Wort zeigt den Eintrag aus dem
 Offline-Wörterbuch und die DeepL-Übersetzung im Satzkontext. Gespeicherte Wörter landen mit dem
@@ -55,7 +57,7 @@ gelten erst nach dem nächsten Deploy, also danach noch einmal `wrangler pages d
 Anmeldeseite aus, keine App, kein Wörterbuch und keine Übersetzung. Nach der Anmeldung bleibt das
 Gerät 400 Tage angemeldet; bei Benutzung verlängert sich das von selbst. Abmelden: `/logout` aufrufen.
 Ein neues Passwort meldet alle Geräte ab. Öffentlich bleiben nur Manifest und Icons, die Chrome zum
-Installieren braucht. Ohne `APP_PASSWORD` ist die App für jeden offen, der die Adresse kennt; dann
+Installieren braucht, und das Hintergrundmuster der Anmeldeseite. Ohne `APP_PASSWORD` ist die App für jeden offen, der die Adresse kennt; dann
 wenigstens `APP_TOKEN` setzen (und in der App unter **Einstellungen → App-Token** eintragen), damit
 niemand dein DeepL-Kontingent verbraucht.
 
@@ -79,19 +81,19 @@ bleiben auf allen Geräten gleich:
   lesbar. In Drive löschen ändert in der App nichts. Ein in der App entferntes Buch kommt nicht wieder,
   bis du **Einstellungen → Google Drive → Wieder laden** tippst. Ändert sich eine Datei in Drive nach dem
   Import, lädt die App sie nicht neu.
-- **Lernstand:** liegt als `vokabel-reader-sync.json` im Ordner „Vokabel-Reader“. Beim Abgleich wird
+- **Lernstand:** liegt als `vokabel-reader-sync.json` im Ordner „Blatt-Reader“ (vor der Umbenennung angelegt: „Vokabel-Reader“, der Ordner wird weiter benutzt). Beim Abgleich wird
   zusammengeführt: das zuletzt geänderte Wort und die zuletzt geübte Karte gewinnen, Sätze und
   Wiederholungen werden vereinigt, gelöschte Wörter bleiben gelöscht. Einstellungen bleiben pro Gerät.
 - **Wann:** beim Start der App, wenn das Gerät wieder online ist, nach einer Quizrunde und mit
   **Jetzt abgleichen**. Google gibt der App nur für etwa eine Stunde Zugriff; danach zeigt die Bibliothek
   **Mit Google Drive abgleichen**. Ein Tippen genügt (das Google-Fenster schließt sich meist von selbst).
 - **Berechtigungen:** Die App darf deine Drive-Dateien lesen und nur Dateien ändern, die sie selbst
-  angelegt hat (Ordner „Vokabel-Reader“, Sync-Datei). Löschen kann sie nichts.
+  angelegt hat (Ordner „Blatt-Reader“, Sync-Datei). Löschen kann sie nichts.
 
 **Einmal einrichten (ca. 10 Minuten, kostenlos).** Ausführlich und mit Hilfe bei Fehlermeldungen in
 [`docs/google-drive-einrichten.md`](docs/google-drive-einrichten.md), hier die Kurzfassung:
 
-1. <https://console.cloud.google.com> → neues Projekt (z. B. „Vokabel-Reader“) → **APIs & Dienste →
+1. <https://console.cloud.google.com> → neues Projekt (z. B. „Blatt-Reader“) → **APIs & Dienste →
    Bibliothek → „Google Drive API“ aktivieren**. Ein Abrechnungskonto ist nicht nötig.
 2. **Google Auth Platform → Branding / Zielgruppe:** App-Name eintragen, Nutzertyp **Extern**, Status
    **Testen**, unter „Testnutzer“ die eigene Google-Adresse eintragen.
@@ -105,7 +107,7 @@ bleiben auf allen Geräten gleich:
    nicht von Google überprüft“: **Erweitert → Weiter zu …** und beide Häkchen setzen. Das ist bei
    privaten Projekten normal.
 
-Danach legt die App in „Meine Ablage“ den Ordner **Vokabel-Reader** an; Bücher einfach dort hineinlegen.
+Danach legt die App in „Meine Ablage“ den Ordner **Blatt-Reader** an; Bücher einfach dort hineinlegen.
 Einen anderen Ordner wählst du unter **Einstellungen → Google Drive** über seinen Namen (genau wie in
 Drive geschrieben) oder seinen Link (in Drive: Ordner → Teilen → Link kopieren). Gibt es mehrere Ordner
 mit dem Namen, braucht es den Link. Die anderen Geräte übernehmen die Wahl beim nächsten Abgleich.
@@ -172,12 +174,49 @@ EPUBs können JavaScript enthalten. Im Produktions-Build verhindert eine Content
 dass solche Skripte laufen (ein Test prüft das). Im Dev-Modus gibt es diese Sperre nicht,
 dort also nur Bücher aus vertrauenswürdigen Quellen öffnen.
 
+## Logo und Design
+
+Die Originale liegen in `images/`: rundes Logo und Logo mit Schriftzug, je als SVG. Daraus erzeugt
+
+```bash
+node scripts/make-icons.mjs
+```
+
+alles, was die App braucht (Kreis und Ring dabei als exakte Kreise, Blatt und Schriftzug aus der Vorlage):
+
+| Datei | Wofür |
+|---|---|
+| `src/brand/logoPaths.ts` | Pfade für die Logo-Komponenten in `src/brand/Logo.tsx` (generiert, nicht von Hand ändern) |
+| `public/icon.svg` | Symbol im Browser-Tab |
+| `public/icon-192.png`, `icon-512.png` | App-Icon, rund |
+| `public/icon-maskable-512.png`, `apple-touch-icon.png` | randlos navy, Android und iOS schneiden selbst zu |
+| `public/brand/pattern.svg` | Kachel für das Blatt-Wasserzeichen im Hintergrund |
+| `public/brand/blatt-reader.svg` | Logo mit Schriftzug (README, zum Teilen) |
+
+**Farben:** Navy `#141f2d` und Creme `#e6dfca` aus dem Logo. Hell: Creme-Papier (`#f4efe3`) mit Navy-Schrift,
+dunkel: Navy (`#0f1722`) mit Creme-Schrift. Alle Farben stehen als CSS-Variablen oben in `src/styles.css`;
+die Anmeldeseite (`server/auth.ts`) hat eine eigene Kopie der Palette.
+
+**Wo das Logo steht:**
+
+- Rundes Logo: App-Icon und Browser-Tab, Reader-Leiste links (führt zur Bibliothek), leere Bibliothek,
+  Ladeanzeige beim Öffnen eines Buchs. Bücher ohne Cover bekommen einen Navy-Einband mit dem Blatt.
+- Logo mit Schriftzug: Kopfleiste (am Handy nur das runde Logo), Anmeldeseite, Fuß der Einstellungen, diese README.
+- Wasserzeichen: das Blatt, sehr blass und gekachelt, hinter allen Seiten und der Anmeldeseite. Im Reader
+  absichtlich nicht, damit der Buchtext ruhig bleibt.
+
+**Name:** Bis November 2026 hieß die App „Vokabel-Reader“. Interne Kennungen (Datenbank im Browser, Kennung in
+Sicherungsdateien, `vokabel-reader-sync.json` in Drive) heißen weiter so, damit vorhandene Daten und
+Sicherungen passen. Ein schon angelegter Drive-Ordner „Vokabel-Reader“ wird weiter benutzt.
+
 ## Aufbau
 
 ```
 functions/_middleware.ts     Passwortschutz → server/auth.ts (auch im Vite-Dev-/Preview-Server)
 functions/api/translate.ts   Cloudflare Pages Function → server/translate.ts (auch im Vite-Dev-Server)
 scripts/build-dictionary.mjs Ding → public/dict/en-de/<shard>.json
+scripts/make-icons.mjs       images/*.svg → Logo-Pfade, Icons, Wasserzeichen
+src/brand/                   Logo-Komponenten (rund, Schriftzug, Blatt)
 src/reader/                  foliate-js einbinden, Wort/Satz unter dem Finger finden, Modi, Markierungen
 src/dict/                    Wörterbuch nachschlagen, komplett offline speichern
 src/lookup/                  Popup: Wörterbuch + DeepL, Speichern

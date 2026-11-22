@@ -1,36 +1,49 @@
+/* Palette from the logo: navy ink (#141f2d) on cream paper (#e6dfca). */
 :root {
-  --bg: #f7f5f0;
-  --surface: #ffffff;
-  --text: #1f2421;
-  --muted: #6b716d;
-  --line: #dcd8cf;
-  --accent: #2f6f5e;
-  --accent-text: #ffffff;
-  --mark: #ffe28a;
-  --danger: #b3261e;
-  --warn: #9a5b00;
-  --ok: #2e7d32;
-  --radius: 10px;
+  --brand: #141f2d;
+  --brand-ink: #e6dfca;
+  --bg: #f4efe3;
+  --surface: #fffcf5;
+  --text: #18222f;
+  --muted: #5d6877;
+  --line: #e1d9c5;
+  --accent: #1f3350;
+  --accent-text: #f7f3e8;
+  --mark: #f3d97a;
+  --danger: #a8322a;
+  --warn: #8a5a10;
+  --ok: #2e6b4c;
+  --logo-disc: var(--brand);
+  --logo-ink: var(--brand-ink);
+  --watermark: rgb(20 31 45 / 0.04);
+  --shadow: 0 1px 2px rgb(20 31 45 / 0.06), 0 6px 18px rgb(20 31 45 / 0.06);
+  --radius: 12px;
   color-scheme: light dark;
   font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Ubuntu, sans-serif;
   line-height: 1.45;
   background: var(--bg);
   color: var(--text);
+  accent-color: var(--accent);
+  -webkit-tap-highlight-color: transparent;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #161917;
-    --surface: #202422;
-    --text: #e8ebe9;
-    --muted: #9aa29d;
-    --line: #353b37;
-    --accent: #6cc2a8;
-    --accent-text: #0e1a16;
-    --mark: #6b5a17;
-    --danger: #ff8a80;
-    --warn: #ffb74d;
-    --ok: #81c784;
+    --brand: #0b121b;
+    --bg: #0f1722;
+    --surface: #172231;
+    --text: #ebe5d3;
+    --muted: #9ba6b3;
+    --line: #273548;
+    --accent: #e2d5ad;
+    --accent-text: #141f2d;
+    --mark: #6b5a1c;
+    --danger: #f0958b;
+    --warn: #e3b46a;
+    --ok: #8fcaa5;
+    --logo-disc: #141f2d;
+    --watermark: rgb(230 223 202 / 0.035);
+    --shadow: 0 1px 2px rgb(0 0 0 / 0.25), 0 6px 18px rgb(0 0 0 / 0.2);
   }
 }
 
@@ -45,6 +58,13 @@ body {
 
 a {
   color: var(--accent);
+  text-underline-offset: 0.18em;
+  text-decoration-thickness: 1px;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 button,
@@ -67,11 +87,19 @@ button,
   display: inline-flex;
   align-items: center;
   gap: 0.4em;
+  transition:
+    border-color 0.15s,
+    background-color 0.15s,
+    box-shadow 0.15s;
 }
 
 button:hover:not(:disabled),
 .button:hover {
   border-color: var(--accent);
+}
+
+button:active:not(:disabled) {
+  transform: translateY(1px);
 }
 
 button:disabled {
@@ -83,6 +111,12 @@ button.primary {
   background: var(--accent);
   border-color: var(--accent);
   color: var(--accent-text);
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgb(20 31 45 / 0.15);
+}
+
+button.primary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 88%, var(--text));
 }
 
 button.danger,
@@ -116,6 +150,14 @@ textarea {
   border-radius: 8px;
   padding: 0.45em 0.6em;
   max-width: 100%;
+}
+
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
 }
 
 textarea {
@@ -208,81 +250,211 @@ mark {
   padding: 0 4px;
 }
 
+/* --- brand ------------------------------------------------------------- */
+
+.emblem {
+  display: block;
+  flex: none;
+}
+
+.emblem-disc {
+  fill: var(--logo-disc);
+}
+
+.emblem-ring {
+  stroke: var(--logo-ink);
+}
+
+.emblem-glyph {
+  fill: var(--logo-ink);
+}
+
+.lettering {
+  display: block;
+  flex: none;
+  height: 100%;
+  width: auto;
+}
+
+.lockup {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
 /* --- app shell ---------------------------------------------------------- */
+
+.app {
+  position: relative;
+  isolation: isolate;
+  min-height: 100dvh;
+}
+
+/* the leaf glyph, faint and tiled across the whole background */
+.app::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: var(--watermark);
+  -webkit-mask: url('/brand/pattern.svg') 0 0 / 200px 200px repeat;
+  mask: url('/brand/pattern.svg') 0 0 / 200px 200px repeat;
+}
 
 .nav {
   display: flex;
   align-items: center;
-  gap: 0.2rem;
-  padding: 0.5rem 1rem;
-  border-bottom: 1px solid var(--line);
-  background: var(--surface);
+  gap: 0.15rem;
+  padding: 0.45rem 1rem;
+  padding-top: calc(0.45rem + env(safe-area-inset-top));
+  background: var(--brand);
+  color: var(--brand-ink);
+  box-shadow: 0 1px 0 rgb(0 0 0 / 0.25), 0 4px 16px rgb(20 31 45 / 0.12);
   position: sticky;
   top: 0;
   z-index: 5;
   overflow-x: auto;
   white-space: nowrap;
+  scrollbar-width: none;
 }
 
 .nav .brand {
-  font-weight: 700;
-  margin-right: 1rem;
-  color: var(--accent);
+  display: inline-flex;
+  margin-right: 1.1rem;
+  padding: 0;
+  border-radius: 999px;
+  color: var(--brand-ink);
 }
 
-.nav a {
-  padding: 0.4em 0.7em;
+.nav .brand .emblem {
+  width: 2.25rem;
+  height: 2.25rem;
+  --logo-disc: transparent;
+}
+
+.nav .brand .lettering {
+  height: 1.05rem;
+}
+
+@media (max-width: 720px) {
+  .nav {
+    padding-inline: 0.6rem;
+  }
+  .nav .brand {
+    margin-right: 0.4rem;
+  }
+  .nav .brand .lettering {
+    display: none;
+  }
+}
+
+.nav a:not(.brand) {
+  position: relative;
+  padding: 0.45em 0.75em;
   border-radius: 8px;
   text-decoration: none;
-  color: var(--text);
+  color: color-mix(in srgb, var(--brand-ink) 78%, transparent);
+  font-weight: 500;
+  transition:
+    color 0.15s,
+    background-color 0.15s;
+}
+
+.nav a:not(.brand):hover {
+  color: var(--brand-ink);
+  background: rgb(230 223 202 / 0.08);
 }
 
 .nav a.active {
-  background: color-mix(in srgb, var(--accent) 15%, transparent);
-  color: var(--accent);
+  color: var(--brand-ink);
+  background: rgb(230 223 202 / 0.13);
   font-weight: 600;
+}
+
+.nav .badge {
+  background: var(--brand-ink);
+  color: #141f2d;
 }
 
 .badge {
   display: inline-block;
-  min-width: 1.4em;
-  margin-left: 0.35em;
-  padding: 0 0.4em;
+  min-width: 1.45em;
+  margin-left: 0.4em;
+  padding: 0 0.42em;
   border-radius: 999px;
   background: var(--accent);
   color: var(--accent-text);
-  font-size: 0.75em;
+  font-size: 0.72em;
+  font-weight: 700;
+  line-height: 1.5;
   text-align: center;
 }
 
 .page {
   max-width: 1100px;
   margin: 0 auto;
-  padding: 1rem;
+  padding: 1.25rem 1rem 2.5rem;
 }
 
 .page-head {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 1rem;
   flex-wrap: wrap;
+  margin-bottom: 0.6rem;
 }
 
-.page-head h1 {
+.page-head h1,
+.page > section > h1 {
   margin: 0.3rem 0 0.8rem;
-  font-size: 1.5rem;
+  font-size: 1.6rem;
+  letter-spacing: -0.015em;
 }
 
 .empty {
-  padding: 2rem;
+  padding: 2.5rem 1.5rem;
   text-align: center;
-  border: 2px dashed var(--line);
+  border: 1.5px dashed var(--line);
   border-radius: var(--radius);
+  background: color-mix(in srgb, var(--surface) 70%, transparent);
+}
+
+.empty .emblem {
+  width: 5rem;
+  height: 5rem;
+  margin: 0 auto 1rem;
 }
 
 h2 {
   font-size: 1.1rem;
-  margin: 1.5rem 0 0.5rem;
+  margin: 1.6rem 0 0.5rem;
+  letter-spacing: -0.005em;
+}
+
+.about {
+  margin: 3rem 0 0.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--line);
+  text-align: center;
+  color: var(--text);
+}
+
+.about .lockup {
+  height: 2.6rem;
+}
+
+.about .emblem {
+  width: 2.6rem;
+  height: 2.6rem;
+}
+
+.about .lettering {
+  height: 1.15rem;
+}
+
+.about p {
+  margin: 0.6rem 0 0;
 }
 
 /* --- library ------------------------------------------------------------ */
@@ -308,26 +480,78 @@ h2 {
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 0.3rem;
+  gap: 0.35rem;
   width: 100%;
   padding: 0.5rem;
   text-align: left;
+  border-color: transparent;
+  background: transparent;
+}
+
+.book-open:hover:not(:disabled) {
+  border-color: var(--line);
+  background: color-mix(in srgb, var(--surface) 80%, transparent);
 }
 
 .cover {
   width: 100%;
   aspect-ratio: 2 / 3;
   object-fit: cover;
-  border-radius: 6px;
+  border-radius: 3px 7px 7px 3px;
   background: var(--line);
+  box-shadow:
+    inset 3px 0 0 rgb(0 0 0 / 0.08),
+    0 1px 2px rgb(20 31 45 / 0.12),
+    0 8px 20px rgb(20 31 45 / 0.12);
+  transition: transform 0.2s;
 }
 
+.book-open:hover .cover {
+  transform: translateY(-2px);
+}
+
+/* no cover: a navy binding with the leaf, like the app icon */
 .cover-placeholder {
+  position: relative;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  font-weight: 700;
-  color: var(--muted);
+  gap: 1.2rem;
+  padding: 1rem 0.8rem;
+  background: linear-gradient(160deg, #1f2e42, #141f2d 60%);
+  color: #e6dfca;
+  box-shadow:
+    inset 6px 0 0 rgb(0 0 0 / 0.22),
+    inset 7px 0 0 rgb(230 223 202 / 0.08),
+    0 1px 2px rgb(20 31 45 / 0.15),
+    0 8px 20px rgb(20 31 45 / 0.15);
+}
+
+@media (prefers-color-scheme: dark) {
+  .cover-placeholder {
+    background: linear-gradient(160deg, #2a3d57, #1a283b 60%);
+  }
+}
+
+.cover-placeholder::after {
+  content: '';
+  position: absolute;
+  inset: 8px 8px 8px 14px;
+  border: 1px solid rgb(230 223 202 / 0.35);
+  border-radius: 2px 4px 4px 2px;
+  pointer-events: none;
+}
+
+.cover-placeholder .glyph {
+  width: 46%;
+}
+
+.cover-placeholder span {
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.22em;
+  opacity: 0.75;
 }
 
 .book-title {
@@ -345,7 +569,8 @@ h2 {
 }
 
 .progress-bar {
-  height: 4px;
+  height: 3px;
+  margin-top: 0.15rem;
   border-radius: 2px;
   background: var(--line);
   overflow: hidden;
@@ -391,6 +616,8 @@ h2 {
   inset: 0;
   display: grid;
   grid-template-rows: auto 1fr auto;
+  /* never wider than the screen, however many buttons the bar has */
+  grid-template-columns: minmax(0, 1fr);
   background: var(--bg);
 }
 
@@ -401,6 +628,28 @@ h2 {
   padding: 0.3rem 0.5rem;
   border-bottom: 1px solid var(--line);
   background: var(--surface);
+}
+
+.reader-home {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.1rem;
+  margin-right: 0.3rem;
+  padding: 0.15rem 0.3rem 0.15rem 0.1rem;
+  border-radius: 999px;
+  color: var(--muted);
+  text-decoration: none;
+  font-size: 1.3rem;
+  line-height: 1;
+}
+
+.reader-home:hover {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.reader-home .emblem {
+  width: 1.9rem;
+  height: 1.9rem;
 }
 
 .reader-title {
@@ -421,6 +670,26 @@ h2 {
 @media (max-width: 600px) {
   .reader-bar .toc {
     max-width: 7rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .reader-bar {
+    gap: 0.1rem;
+    padding-inline: 0.3rem;
+  }
+  .reader-bar .icon {
+    padding: 0.25em 0.35em;
+  }
+  .reader-bar .toc {
+    max-width: 6rem;
+  }
+  .reader-home {
+    margin-right: 0.15rem;
+    padding: 0.1rem;
+  }
+  .reader-home > span {
+    display: none;
   }
 }
 
@@ -459,6 +728,34 @@ h2 {
   position: absolute;
   inset: 40% 0 auto;
   text-align: center;
+}
+
+.reader-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.9rem;
+  inset: 35% 0 auto;
+  color: var(--muted);
+}
+
+.reader-loading .emblem {
+  width: 3.5rem;
+  height: 3.5rem;
+  animation: breathe 1.6s ease-in-out infinite;
+}
+
+@keyframes breathe {
+  50% {
+    opacity: 0.55;
+    transform: scale(0.94);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reader-loading .emblem {
+    animation: none;
+  }
 }
 
 .reader-foot {
@@ -610,6 +907,8 @@ h2 {
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--surface);
+  box-shadow: var(--shadow);
+  overflow: hidden;
 }
 
 .term-list li + li {
@@ -656,15 +955,15 @@ h2 {
 }
 
 .status.s1 {
-  border-color: #e0a100;
+  border-color: #d39a2c;
 }
 .status.s2,
 .status.s3 {
-  border-color: #d4c14a;
+  border-color: #c7b45a;
 }
 .status.s4,
 .status.s5 {
-  border-color: #7cb342;
+  border-color: #7fae6a;
 }
 .status.s6 {
   border-color: var(--ok);
@@ -678,6 +977,7 @@ h2 {
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--radius);
+  box-shadow: var(--shadow);
   padding: 1rem;
   position: sticky;
   top: 4rem;
@@ -731,7 +1031,8 @@ h2 {
 .quiz-card {
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: 14px;
+  border-radius: 16px;
+  box-shadow: var(--shadow);
   padding: 1.5rem;
   min-height: 14rem;
   display: flex;
@@ -815,6 +1116,7 @@ h2 {
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--surface);
+  box-shadow: var(--shadow);
 }
 
 .drive-bar-idle {

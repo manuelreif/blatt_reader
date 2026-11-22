@@ -1,5 +1,6 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useEffect } from 'react'
+import { APP_NAME, Lockup } from './brand/Logo'
 import { countDue } from './db/repo'
 import { db } from './db/schema'
 import { syncDrive } from './drive/driveSync'
@@ -24,7 +25,9 @@ function Nav({ route }: { route: Route }) {
   ]
   return (
     <nav className="nav">
-      <span className="brand">Vokabel-Reader</span>
+      <a className="brand" href={href({ name: 'library' })} title={APP_NAME} aria-label={APP_NAME}>
+        <Lockup />
+      </a>
       {items.map(it => (
         <a key={it.route.name} href={href(it.route)} className={route.name === it.route.name ? 'active' : ''}>
           {it.label}

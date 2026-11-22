@@ -53,6 +53,8 @@ export function DriveSettings() {
       </div>
     )
 
+  const appFolder = state.appFolderName ?? APP_FOLDER_NAME
+
   async function changeFolder(value: string | null) {
     setFolderError('')
     setBusy(true)
@@ -74,7 +76,7 @@ export function DriveSettings() {
       </p>
       <p className="muted">
         Neue EPUBs und PDFs in diesem Ordner (auch in Unterordnern) lädt die App beim Abgleich herunter. Der Lernstand liegt als{' '}
-        <code>{SYNC_FILE}</code> im Ordner „{APP_FOLDER_NAME}“.
+        <code>{SYNC_FILE}</code> im Ordner „{appFolder}“.
       </p>
       <form
         className="row"
@@ -98,7 +100,7 @@ export function DriveSettings() {
         </button>
         {state.booksFolderId && (
           <button type="button" disabled={busy} onClick={() => void changeFolder(null)}>
-            Zurück auf „{APP_FOLDER_NAME}“
+            Zurück auf „{appFolder}“
           </button>
         )}
       </form>

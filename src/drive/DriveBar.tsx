@@ -5,7 +5,7 @@ import { driveConfigured, preloadGis } from './googleAuth'
 /** The books folder's name, linked to the folder in Google Drive once its id is known. */
 export function BooksFolderLink({ state }: { state: DriveState }) {
   const id = state.booksFolderId ?? state.appFolderId
-  const name = state.booksFolderName ?? APP_FOLDER_NAME
+  const name = state.booksFolderName ?? state.appFolderName ?? APP_FOLDER_NAME
   if (!id) return <strong>{name}</strong>
   return (
     <a href={`https://drive.google.com/drive/folders/${encodeURIComponent(id)}`} target="_blank" rel="noopener noreferrer">

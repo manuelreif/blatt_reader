@@ -377,7 +377,8 @@ test.describe('Google Drive (Google replaced by a stub)', () => {
 
   test('books arrive by themselves, a removed one stays away, vocabulary goes both ways', async ({ page }) => {
     const fake = await mockGoogle(page)
-    // "another device" connected before: app folder with a book and the sync file holding one word
+    // "another device" connected before: app folder with a book and the sync file holding one word;
+    // it still has the name from before the rename, which stays in use
     const app = fake.folder('Vokabel-Reader', 'root', { vokabelReader: 'root' })
     fake.add({ name: 'The Test Book.epub', parents: [app.id], mimeType: 'application/epub+zip', content: readFileSync(fixture('sample.epub')) })
     const now = Date.now()

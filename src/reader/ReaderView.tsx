@@ -1,5 +1,6 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useEffect, useRef, useState } from 'react'
+import { Emblem } from '../brand/Logo'
 import { db, type Book, type Highlight, type HighlightColor } from '../db/schema'
 import { LookupSheet } from '../lookup/LookupSheet'
 import type { LookupTarget } from '../lookup/lookupService'
@@ -30,7 +31,12 @@ const bookCSS = (fontScale: number) => `
     widows: 2;
   }
   pre { white-space: pre-wrap !important; }
-  @media (prefers-color-scheme: dark) { a:link { color: lightblue; } }
+  html { color: #18222f; }
+  a:link { color: #1f3350; }
+  @media (prefers-color-scheme: dark) {
+    html { color: #e4ddca; }
+    a:link { color: #e2d5ad; }
+  }
 `
 
 type ActiveHit = LookupTarget & { doc: Document; range: Range }
@@ -332,8 +338,9 @@ export function ReaderView({ bookId, cfi }: { bookId: string; cfi?: string }) {
   return (
     <div className={`reader mode-${mode} ${hit || markSheet || listOpen ? 'with-sheet' : ''}`}>
       <header className="reader-bar">
-        <a className="icon" href={href({ name: 'library' })} title="Zur Bibliothek">
-          ←
+        <a className="reader-home" href={href({ name: 'library' })} title="Zur Bibliothek" aria-label="Zur Bibliothek">
+          <span aria-hidden>‹</span>
+          <Emblem />
         </a>
         <span className="reader-title" title={book?.title}>
           {book?.title ?? '…'}
@@ -414,7 +421,12 @@ export function ReaderView({ bookId, cfi }: { bookId: string; cfi?: string }) {
         <button className="turn turn-right" aria-label="Weiter blättern" onClick={() => void view?.goRight()}>
           ›
         </button>
-        {state === 'loading' && <p className="reader-msg">Öffne Buch …</p>}
+        {state === 'loading' && (
+          <div className="reader-msg reader-loading">
+            <Emblem />
+            <span>Öffne Buch …</span>
+          </div>
+        )}
         {state === 'error' && (
           <p className="reader-msg error">
             {error} <a href={href({ name: 'library' })}>Zur Bibliothek</a>

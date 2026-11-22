@@ -12,7 +12,7 @@ import { forgetSkippedDriveFiles, syncDriveBooks, type BookSyncProgress, type Bo
 import { syncVocabulary } from './syncVocab'
 
 /** created by the app in "My Drive": holds the sync file and is the default books folder */
-export const APP_FOLDER_NAME = 'Vokabel-Reader'
+export const APP_FOLDER_NAME = 'Blatt-Reader'
 const APP_TAG = { key: 'vokabelReader', value: 'root' }
 
 /** This device's Drive connection: db.settings key `drive`, never part of a backup (LOCAL_SETTING_KEYS). */
@@ -20,6 +20,8 @@ export interface DriveState {
   /** connected once on this device: background syncs run and the library shows the sync button */
   connected?: boolean
   appFolderId?: string
+  /** the app folder's name in Drive (folders created before the rename are called "Vokabel-Reader") */
+  appFolderName?: string
   syncFileId?: string
   /** books folder chosen by link (stored in the app folder's appProperties, so every device uses it); unset = app folder */
   booksFolderId?: string
@@ -143,7 +145,7 @@ async function run(opts: SyncOptions): Promise<DriveSyncResult | null> {
     const drive = driveClient(token, opts.fetchImpl)
     const app = await ensureAppFolder(drive, state.appFolderId)
     const booksFolderId = app.appProperties?.booksFolderId
-    let booksFolderName = APP_FOLDER_NAME
+    let booksFolderName = app.name
     if (booksFolderId) {
       try {
         booksFolderName = (await drive.getFile(booksFolderId, 'id,name')).name
@@ -153,7 +155,7 @@ async function run(opts: SyncOptions): Promise<DriveSyncResult | null> {
         throw e
       }
     }
-    await patchDriveState({ connected: true, appFolderId: app.id, booksFolderId, booksFolderName })
+    await patchDriveState({ connected: true, appFolderId: app.id, appFolderName: app.name, booksFolderId, booksFolderName })
 
     setStatus({ phase: 'books' })
     const books = await syncDriveBooks({
@@ -229,7 +231,7 @@ export async function setBooksFolder(link: string | null, opts: SyncOptions = {}
   const app = await ensureAppFolder(drive, (await getDriveState()).appFolderId)
   if (link === null) {
     await drive.setAppProperties(app.id, { booksFolderId: null })
-    await patchDriveState({ appFolderId: app.id, booksFolderId: undefined, booksFolderName: APP_FOLDER_NAME })
+    await patchDriveState({ appFolderId: app.id, appFolderName: app.name, booksFolderId: undefined, booksFolderName: app.name })
   } else {
     const folder = await resolveFolder(drive, link)
     await drive.setAppProperties(app.id, { booksFolderId: folder.id })
