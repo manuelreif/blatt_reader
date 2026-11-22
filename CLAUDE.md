@@ -191,6 +191,24 @@ Die Google-Client-ID (siehe `CLAUDE.local.md`) hat als JavaScript-Quellen die dr
 localhost-Ports, `https://<projekt>.pages.dev`.
 Eine neue Domain dort eintragen, sonst `origin_mismatch`.
 
+**Als Nächstes (geplant ab 23.11.2026): Praxistest auf Android**, in Chrome https://<projekt>.pages.dev
+öffnen, anmelden, Menü → „App installieren“, dann in der installierten App:
+- [ ] Icon und Start ohne Browserleiste; Anmeldung bleibt nach Neustart erhalten
+- [ ] Buch importieren (vom Gerät und über Drive)
+- [ ] Wort antippen: Popup passt auf den Bildschirm, Wörterbuch + DeepL, speichern, Quizrunde
+- [ ] Reader-Leiste läuft nicht über den Rand
+- [ ] Lesemodus: Blättern per Tippen links/rechts
+- [ ] Zwei-Finger-Tipp wechselt den Modus
+- [ ] Markieren mit den Auswahl-Griffen, Farbe, Notiz
+- [ ] Einstellungen → Wörterbuch offline speichern, „dauerhafter Speicher“ ansehen
+- [ ] Flugmodus: App startet, Buch lesbar, Nachschlagen nur Wörterbuch mit Hinweis, Wort speichern;
+      wieder online → DeepL wird nachgeholt
+- [ ] „Mit Google verbinden“ in der installierten PWA: Popup geht auf, zurück in die App
+- [ ] Abgleich Desktop ↔ Handy: Wort am Desktop speichern, auf beiden „Jetzt abgleichen“
+- [ ] Drive lädt ein Buch aus dem Ordner wirklich herunter (auch am Desktop noch offen); scheitert es an
+      der CSP, Ziel-Domain von `alt=media` in `connect-src` aufnehmen
+Gefundene Fehler hier ergänzen, erledigte Punkte nach oben in den Stand übernehmen.
+
 **Noch nie echt getestet** (nur simuliert bzw. mit generierten Fixtures):
 - Google Drive mit echtem Google: Login-Popup in der installierten Android-PWA, Verhalten nach mehr als
   1 h, ob `alt=media`-Downloads auf eine andere Domain umleiten (dann in die CSP `connect-src`), ob Google im
