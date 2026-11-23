@@ -4,6 +4,7 @@ import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { authGate, type AuthEnv } from './server/auth.ts'
+import { memoryAttemptStore } from './server/loginLimit.ts'
 import { handleTranslate, type TranslateEnv } from './server/translate.ts'
 
 const readBody = async (req: IncomingMessage) => {
@@ -39,7 +40,7 @@ function devServerApi(env: TranslateEnv & AuthEnv): Plugin {
     // only the login form needs the body; other requests (e.g. /api/translate) keep their stream
     const isLogin = (req.url ?? '').split('?')[0] === '/login'
     void toRequest(req, isLogin)
-      .then(request => authGate(request, env))
+      .then(request => authGate(request, env, { ip: req.socket.remoteAddress }))
       .then(async decision => {
         if ('response' in decision) return send(res, decision.response)
         if (decision.setCookie) res.setHeader('set-cookie', decision.setCookie)
@@ -101,6 +102,8 @@ export default defineConfig(({ mode }) => {
         APP_TOKEN: env.APP_TOKEN,
         DEEPL_API_URL: env.DEEPL_API_URL,
         APP_PASSWORD: env.APP_PASSWORD,
+        // counts failed logins while the server runs (Cloudflare: KV binding)
+        LOGIN_ATTEMPTS: memoryAttemptStore(),
       }),
       cspPlugin(),
       VitePWA({

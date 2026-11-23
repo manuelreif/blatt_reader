@@ -2,11 +2,15 @@
 // (functions/_middleware.ts) and in the Vite dev/preview server (vite.config.ts).
 // Without APP_PASSWORD the gate is off. The session cookie is signed with the
 // password itself (HMAC-SHA256), so changing the password logs out every device.
+// Failed logins are limited per client address (server/loginLimit.ts).
 
 import { EMBLEM, LETTERING } from '../src/brand/logoPaths.ts'
+import { loginLimiter, type AttemptStore } from './loginLimit.ts'
 
 export interface AuthEnv {
   APP_PASSWORD?: string
+  /** Workers KV namespace (Cloudflare) or memory store (Vite) counting failed logins */
+  LOGIN_ATTEMPTS?: AttemptStore
 }
 
 export type AuthDecision =
@@ -151,7 +155,14 @@ const LOGIN_HEADERS = {
   'x-robots-tag': 'noindex',
 }
 
-const html = (body: string, status = 200) => new Response(body, { status, headers: LOGIN_HEADERS })
+const html = (body: string, status = 200, headers: Record<string, string> = {}) =>
+  new Response(body, { status, headers: { ...LOGIN_HEADERS, ...headers } })
+
+const tooManyAttempts = (seconds: number) => {
+  const minutes = Math.max(1, Math.ceil(seconds / 60))
+  const message = `Zu viele Fehlversuche. Bitte in ${minutes} ${minutes === 1 ? 'Minute' : 'Minuten'} noch einmal versuchen.`
+  return html(loginPage(message), 429, { 'retry-after': String(Math.max(1, Math.ceil(seconds))) })
+}
 
 const redirect = (location: string, setCookie?: string) =>
   new Response(null, {
@@ -170,7 +181,8 @@ const wantsHtml = (request: Request) =>
 export async function authGate(
   request: Request,
   env: AuthEnv,
-  opts: { now?: number; failDelayMs?: number } = {},
+  /** ip: client address where no trusted cf-connecting-ip header exists (Vite server) */
+  opts: { now?: number; failDelayMs?: number; ip?: string } = {},
 ): Promise<AuthDecision> {
   const password = env.APP_PASSWORD
   if (!password) return { pass: true }
@@ -184,13 +196,23 @@ export async function authGate(
 
   if (path === '/login') {
     if (request.method === 'POST') {
+      // Cloudflare sets cf-connecting-ip itself, a client cannot fake it
+      const ip = opts.ip ?? request.headers.get('cf-connecting-ip')
+      const limiter = await loginLimiter(env.LOGIN_ATTEMPTS, ip, Math.floor(now / 1000))
+      // blocked: do not even look at the password
+      if (limiter.blockedFor) return { response: tooManyAttempts(limiter.blockedFor) }
       const form = await request.formData().catch(() => null)
       const given = form?.get('password')
-      if (typeof given === 'string' && (await safeEqual(given, password)))
+      if (typeof given === 'string' && (await safeEqual(given, password))) {
+        await limiter.succeeded()
         return { response: redirect('/', cookieHeader(url, await createSession(password, now), SESSION_DAYS * 24 * 60 * 60)) }
-      // slows down guessing a little; a long password is the real protection
+      }
+      // slows down guessing a little more; a long password is the real protection
       await new Promise(r => setTimeout(r, opts.failDelayMs ?? 1000))
-      return { response: html(loginPage('Falsches Passwort.'), 401) }
+      const { left, blockedFor } = await limiter.failed()
+      if (blockedFor) return { response: tooManyAttempts(blockedFor) }
+      const hint = left === null ? '' : ` Noch ${left} ${left === 1 ? 'Versuch' : 'Versuche'}.`
+      return { response: html(loginPage(`Falsches Passwort.${hint}`), 401) }
     }
     return { response: exp ? redirect('/') : html(loginPage()) }
   }
