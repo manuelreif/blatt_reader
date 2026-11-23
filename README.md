@@ -80,6 +80,14 @@ Installieren braucht, und das Hintergrundmuster der Anmeldeseite. Ohne `APP_PASS
 wenigstens `APP_TOKEN` setzen (und in der App unter **Einstellungen → App-Token** eintragen), damit
 niemand dein DeepL-Kontingent verbraucht.
 
+**Eigener DeepL-Key pro Gerät:** Wer die App mitbenutzt, kann unter **Einstellungen → Übersetzung →
+Eigener DeepL-Key** einen eigenen (kostenlosen) Key eintragen. Dann übersetzt DeepL auf diesem Gerät mit
+diesem Key und rechnet bei dessen Konto ab, nicht beim Server-Key. Der Key liegt nur auf dem Gerät (nicht in
+Sicherungen, nicht im Drive-Abgleich) und geht bei jeder Übersetzung als Kopfzeile `x-deepl-key` an
+`/api/translate`, das ihn an DeepL weiterreicht, ohne ihn zu speichern. Mit dem Secret
+`DEEPL_REQUIRE_OWN_KEY=1` nimmt der Server seinen eigenen Key nie: Jedes Gerät braucht dann einen eigenen,
+und `DEEPL_API_KEY` kann ganz fehlen.
+
 **Fehlversuche:** Pro IP-Adresse (bei IPv6 pro /64-Netz) sind 5 falsche Passwörter in einer Stunde
 erlaubt, gezählt ab dem ersten Fehlversuch. Danach lehnt die Anmeldeseite bis zum Ende dieser Stunde
 alles ab, auch das richtige Passwort, ohne es zu prüfen (Antwort 429). Eine erfolgreiche Anmeldung setzt

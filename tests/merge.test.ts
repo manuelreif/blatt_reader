@@ -158,6 +158,7 @@ describe('backup files', () => {
       { key: 'autoSave', value: true },
       { key: 'drive', value: { connected: true } },
       { key: 'enrichBatch', value: { ids: [] } },
+      { key: 'deeplKey', value: 'mine:fx' },
     ])
     expect((await snapshot()).settings?.map(s => s.key)).toEqual(['autoSave'])
 
@@ -168,11 +169,13 @@ describe('backup files', () => {
       settings: [
         { key: 'newCardsPerDay', value: 5 },
         { key: 'drive', value: { connected: false } },
+        { key: 'deeplKey', value: 'theirs:fx' },
       ],
     })
     await restoreBackup(other)
     expect((await db.settings.get('newCardsPerDay'))?.value).toBe(5)
     expect((await db.settings.get('drive'))?.value).toEqual({ connected: true })
+    expect((await db.settings.get('deeplKey'))?.value).toBe('mine:fx')
 
     await mergeBackup({ ...JSON.parse(other), settings: [{ key: 'newCardsPerDay', value: 9 }] }, { settings: false })
     expect((await db.settings.get('newCardsPerDay'))?.value).toBe(5)

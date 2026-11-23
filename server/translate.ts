@@ -1,12 +1,20 @@
-// DeepL-Vermittler. Läuft als Cloudflare Pages Function (functions/api/translate.ts)
-// und im Vite-Dev-Server (vite.config.ts). DeepL blockiert Aufrufe direkt aus dem
-// Browser (CORS), außerdem bleibt der API-Key so auf dem Server.
+// DeepL proxy. Runs as a Cloudflare Pages Function (functions/api/translate.ts)
+// and in the Vite dev server (vite.config.ts). DeepL blocks calls straight from the
+// browser (CORS), and the server key stays on the server this way.
+//
+// A device may bring its own DeepL key (header x-deepl-key, set under Einstellungen):
+// then that key is used and billed instead of DEEPL_API_KEY. The key is only passed
+// through to DeepL, never stored or logged.
 
 export interface TranslateEnv {
   DEEPL_API_KEY?: string
   APP_TOKEN?: string
   DEEPL_API_URL?: string
+  /** "1"/"true": never use DEEPL_API_KEY, every device needs its own key */
+  DEEPL_REQUIRE_OWN_KEY?: string
 }
+
+export const OWN_KEY_HEADER = 'x-deepl-key'
 
 export interface TranslateRequestBody {
   text: string
@@ -19,11 +27,17 @@ export interface TranslateResponseBody {
   translation: string
   detectedSourceLang?: string
   billedCharacters?: number
+  /** which key DeepL billed */
+  keySource?: 'own' | 'server'
 }
 
 const MAX_TEXT = 1500
 const MAX_CONTEXT = 4000
 const LANG = /^[A-Z]{2}(-[A-Z]{2,4})?$/
+// DeepL keys are UUIDs, Free keys end in ":fx"; anything else is a typo (or not a key)
+const KEY_FORMAT = /^[A-Za-z0-9-]{8,100}(:fx)?$/
+
+const isOn = (v: string | undefined) => !!v && /^(1|true|yes|on)$/i.test(v.trim())
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), {
@@ -43,8 +57,15 @@ export async function handleTranslate(
   if (request.method !== 'POST') return json({ error: 'Nur POST erlaubt' }, 405)
   if (env.APP_TOKEN && request.headers.get('x-app-token') !== env.APP_TOKEN)
     return json({ error: 'App-Token fehlt oder ist falsch (Einstellungen prüfen)' }, 401)
-  const key = env.DEEPL_API_KEY?.trim()
-  if (!key) return json({ error: 'DEEPL_API_KEY ist auf dem Server nicht gesetzt' }, 503)
+  const ownKey = request.headers.get(OWN_KEY_HEADER)?.trim() ?? ''
+  if (ownKey && !KEY_FORMAT.test(ownKey))
+    return json({ error: 'Eigener DeepL-Key hat ein ungültiges Format (Einstellungen prüfen)' }, 400)
+  const keySource = ownKey ? 'own' : 'server'
+  if (!ownKey && isOn(env.DEEPL_REQUIRE_OWN_KEY))
+    return json({ error: 'Bitte unter Einstellungen → Übersetzung einen eigenen DeepL-Key eintragen' }, 403)
+  const key = ownKey || env.DEEPL_API_KEY?.trim()
+  if (!key)
+    return json({ error: 'Kein DeepL-Key: unter Einstellungen einen eigenen eintragen (oder DEEPL_API_KEY auf dem Server setzen)' }, 503)
 
   let body: Partial<TranslateRequestBody>
   try {
@@ -76,11 +97,12 @@ export async function handleTranslate(
     return json({ error: 'DeepL ist nicht erreichbar' }, 502)
   }
   if (!upstream.ok) {
+    const whose = keySource === 'own' ? 'Eigener DeepL-Key' : 'DeepL-Key des Servers'
     const error =
       upstream.status === 456
-        ? 'DeepL-Kontingent für diesen Monat aufgebraucht'
+        ? `${whose}: Kontingent für diesen Monat aufgebraucht`
         : upstream.status === 403
-          ? 'DeepL-Key ungültig'
+          ? `${whose} ungültig`
           : upstream.status === 429
             ? 'Zu viele Anfragen an DeepL, bitte kurz warten'
             : `DeepL-Fehler ${upstream.status}`
@@ -95,6 +117,7 @@ export async function handleTranslate(
     translation: t.text,
     detectedSourceLang: t.detected_source_language,
     billedCharacters: t.billed_characters,
+    keySource,
   }
   return json(result)
 }

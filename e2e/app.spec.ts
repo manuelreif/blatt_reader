@@ -227,6 +227,26 @@ test('install button: appears when the browser offers installation and replays i
   await expect(page.getByText('Läuft als installierte App')).toBeVisible()
 })
 
+test('settings: an own DeepL key goes along with every request and is kept on the device', async ({ page }) => {
+  const keys: (string | undefined)[] = []
+  await page.route('**/api/translate', async route => {
+    const key = route.request().headers()['x-deepl-key']
+    keys.push(key)
+    await route.fulfill({ json: { translation: 'Ufer', billedCharacters: 4, keySource: key ? 'own' : 'server' } })
+  })
+  await page.goto('/#/settings')
+  await page.getByRole('button', { name: 'DeepL testen' }).click()
+  await expect(page.getByText('Key des Servers')).toBeVisible()
+
+  await page.getByTestId('deepl-key').fill('1234abcd-ef:fx')
+  await page.getByRole('button', { name: 'DeepL testen' }).click()
+  await expect(page.getByText('(abgerechnet: 4 Zeichen, eigener Key)')).toBeVisible()
+  expect(keys).toEqual([undefined, '1234abcd-ef:fx'])
+
+  await page.reload()
+  await expect(page.getByTestId('deepl-key')).toHaveValue('1234abcd-ef:fx')
+})
+
 test('settings: "always" asks DeepL at once, for words and for sentences', async ({ page }) => {
   await page.goto('/#/settings')
   await page.getByTestId('deepl-mode').selectOption('always')

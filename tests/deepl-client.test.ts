@@ -21,6 +21,16 @@ describe('translateInContext', () => {
     expect((init.headers as Record<string, string>)['x-app-token']).toBe('tok')
   })
 
+  it("sends this device's own DeepL key, and none when it is empty", async () => {
+    const f = vi.fn(async () => Response.json({ translation: 'Ufer', keySource: 'own' }))
+    await translateInContext('bank', 'a', { fetchImpl: f })
+    expect((f.mock.calls[0] as unknown as [string, RequestInit])[1].headers).not.toHaveProperty('x-deepl-key')
+    await setSetting('deeplKey', ' 1234abcd-ef:fx ')
+    const r = await translateInContext('bank', 'b', { fetchImpl: f })
+    expect((f.mock.calls[1] as unknown as [string, RequestInit])[1].headers).toMatchObject({ 'x-deepl-key': '1234abcd-ef:fx' })
+    expect(r.keySource).toBe('own')
+  })
+
   it('turns server errors into readable messages', async () => {
     const f = vi.fn(async () => Response.json({ error: 'DeepL-Key ungültig' }, { status: 502 }))
     await expect(translateInContext('bank', '', { fetchImpl: f })).rejects.toThrow(new TranslateError('DeepL-Key ungültig'))

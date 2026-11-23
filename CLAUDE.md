@@ -20,7 +20,7 @@ Ablenker) durch Claude per Copy-Paste. Setup, Deploy und Bedienung: siehe `READM
 ```bash
 npm run dev            # Vite-Dev-Server inkl. /api/translate (Key aus .env)
 npm run typecheck
-npm test               # Vitest, 137 Tests
+npm test               # Vitest, 145 Tests
 npm run e2e            # Playwright gegen Dev-Server (Port 5179), erzeugt Fixtures selbst
 npm run build && E2E_PREVIEW=1 npm run e2e   # gegen Produktions-Build (Port 4179), inkl. CSP- und Passwort-Test
 npm run build:dict     # Ding laden (.cache/) → public/dict/en-de/*.json
@@ -77,6 +77,10 @@ Vor jedem Commit: `npm run typecheck && npm test && npm run e2e`.
   `vite.config.ts`). Wort geht als `text`, Satz als `context` (wird nicht abgerechnet). Free-Keys enden
   auf `:fx` → `api-free.deepl.com`. Optionales `APP_TOKEN` als Header `x-app-token`.
   Client `src/translate/deepl.ts` cached in `translationCache` und fasst gleichzeitige gleiche Anfragen zusammen.
+  **Eigener Key pro Gerät:** Setting `deeplKey` (in `LOCAL_SETTING_KEYS`, also nie in Sicherung/Drive) geht als
+  Header `x-deepl-key` mit und ersetzt auf dem Server `DEEPL_API_KEY` (Formatprüfung, sonst 400). Antwort sagt
+  `keySource: 'own' | 'server'`. `DEEPL_REQUIRE_OWN_KEY=1` → ohne eigenen Key 403, der Server-Key wird nie benutzt.
+  Der Übersetzungs-Cache ist davon unabhängig.
   Scheitert DeepL beim Speichern, bekommt der Kontext `deeplPending: true` (kein Index, daher ohne
   Schema-Version); `src/translate/pending.ts` holt das nach (App-Start, `online`-Event, nächster
   erfolgreicher Lookup, Knopf in den Einstellungen) und ersetzt `Term.translation` nur, solange dort
@@ -225,6 +229,9 @@ drei localhost-Ports und die Live-Adresse. Eine neue Domain dort eintragen, sons
 **Neu (23.11.2026):** Repo für die Veröffentlichung vorbereitet: MIT-Lizenz, Historie bereinigt (Live-Adresse,
 Projektnamen, persönliche Angaben und Logo-PNGs entfernt; Backup-Bundle liegt lokal neben dem Projektordner),
 Login-Bremse (5 Fehlversuche pro Stunde und IP).
+
+**Neu (23.11.2026):** Eigener DeepL-Key pro Gerät (Einstellungen → Übersetzung), damit Mitnutzer auf ihr
+eigenes Kontingent übersetzen; optional erzwingbar mit `DEEPL_REQUIRE_OWN_KEY`.
 
 **Als Nächstes (geplant ab 23.11.2026): Praxistest auf Android**, in Chrome die Live-Adresse (`CLAUDE.local.md`)
 öffnen, anmelden, Menü → „App installieren“, dann in der installierten App:

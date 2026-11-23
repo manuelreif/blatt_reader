@@ -6,6 +6,8 @@ export interface DeeplResult {
   translation: string
   billedCharacters?: number
   cached?: boolean
+  /** which key DeepL billed (only for fresh requests) */
+  keySource?: 'own' | 'server'
 }
 
 export class TranslateError extends Error {
@@ -47,12 +49,17 @@ export async function translateInContext(
 }
 
 async function requestTranslation(key: string, text: string, context: string, fetchImpl: typeof fetch): Promise<DeeplResult> {
-  const { appToken } = await getSettings()
+  const { appToken, deeplKey } = await getSettings()
+  const ownKey = deeplKey.trim()
   let res: Response
   try {
     res = await fetchImpl('/api/translate', {
       method: 'POST',
-      headers: { 'content-type': 'application/json', ...(appToken ? { 'x-app-token': appToken } : {}) },
+      headers: {
+        'content-type': 'application/json',
+        ...(appToken ? { 'x-app-token': appToken } : {}),
+        ...(ownKey ? { 'x-deepl-key': ownKey } : {}),
+      },
       body: JSON.stringify({ text, context, sourceLang: 'EN', targetLang: 'DE' }),
     })
   } catch {
@@ -63,9 +70,14 @@ async function requestTranslation(key: string, text: string, context: string, fe
     error?: string
     billedCharacters?: number
     login?: string
+    keySource?: 'own' | 'server'
   }
   if (!res.ok || !data.translation)
     throw new TranslateError(data.error ?? `Übersetzung fehlgeschlagen (${res.status})`, res.status === 401 && !!data.login)
   await db.translationCache.put({ key, translation: data.translation, createdAt: Date.now() })
-  return { translation: data.translation, billedCharacters: data.billedCharacters }
+  return {
+    translation: data.translation,
+    billedCharacters: data.billedCharacters,
+    ...(data.keySource ? { keySource: data.keySource } : {}),
+  }
 }

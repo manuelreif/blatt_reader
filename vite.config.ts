@@ -101,6 +101,7 @@ export default defineConfig(({ mode }) => {
         DEEPL_API_KEY: env.DEEPL_API_KEY,
         APP_TOKEN: env.APP_TOKEN,
         DEEPL_API_URL: env.DEEPL_API_URL,
+        DEEPL_REQUIRE_OWN_KEY: env.DEEPL_REQUIRE_OWN_KEY,
         APP_PASSWORD: env.APP_PASSWORD,
         // counts failed logins while the server runs (Cloudflare: KV binding)
         LOGIN_ATTEMPTS: memoryAttemptStore(),

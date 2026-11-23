@@ -8,6 +8,8 @@ export type DeeplMode = 'manual' | 'fallback' | 'always'
 export interface AppSettings {
   /** sent as X-App-Token to /api/translate */
   appToken: string
+  /** this device's own DeepL key, sent as x-deepl-key; empty = the server's key */
+  deeplKey: string
   /** manual: only on "+ DeepL"; fallback: words without a dictionary entry; always: words and passages */
   deeplMode: DeeplMode
   /** save every lookup to the vocabulary without asking */
@@ -26,6 +28,7 @@ export interface AppSettings {
 
 export const DEFAULT_SETTINGS: AppSettings = {
   appToken: '',
+  deeplKey: '',
   deeplMode: 'manual',
   autoSave: false,
   cardTypes: ['en-de', 'cloze'],
@@ -39,9 +42,10 @@ export const DEFAULT_SETTINGS: AppSettings = {
 /**
  * Rows in db.settings that belong to this device only: never part of a backup and
  * never overwritten by one (open enrichment batch, Google Drive connection, reader mode:
- * reading on the tablet, translating on the desktop is fine).
+ * reading on the tablet, translating on the desktop is fine; own DeepL key: a secret,
+ * never written to a backup file or Google Drive).
  */
-export const LOCAL_SETTING_KEYS: ReadonlySet<string> = new Set(['enrichBatch', 'drive', 'readerMode'])
+export const LOCAL_SETTING_KEYS: ReadonlySet<string> = new Set(['enrichBatch', 'drive', 'readerMode', 'deeplKey'])
 
 export async function getSettings(): Promise<AppSettings> {
   const rows = await db.settings.toArray()

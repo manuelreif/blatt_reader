@@ -179,9 +179,11 @@ export function SettingsView() {
     setTest({ text: 'Teste …' })
     try {
       const r = await translateInContext('bank', 'We had a picnic on the bank of the river.', { useCache: false })
-      setTest({
-        text: `OK: „bank“ → „${r.translation}“${r.billedCharacters !== undefined ? ` (abgerechnet: ${r.billedCharacters} Zeichen)` : ''}`,
-      })
+      const notes = [
+        r.billedCharacters !== undefined ? `abgerechnet: ${r.billedCharacters} Zeichen` : '',
+        r.keySource === 'own' ? 'eigener Key' : r.keySource === 'server' ? 'Key des Servers' : '',
+      ].filter(Boolean)
+      setTest({ text: `OK: „bank“ → „${r.translation}“${notes.length ? ` (${notes.join(', ')})` : ''}` })
     } catch (e) {
       setTest({ text: `Fehler: ${(e as Error).message}`, login: e instanceof TranslateError && e.login })
     }
@@ -213,6 +215,24 @@ export function SettingsView() {
           <option value="always">Immer automatisch (Wörter und Sätze)</option>
         </select>
       </label>
+      <label className="field">
+        <span className="label">Eigener DeepL-Key (optional)</span>
+        <input
+          type="password"
+          value={s.deeplKey}
+          onChange={e => void setSetting('deeplKey', e.target.value)}
+          autoComplete="off"
+          spellCheck={false}
+          placeholder="leer = Key des Servers"
+          data-testid="deepl-key"
+        />
+      </label>
+      <p className="muted">
+        Mit eigenem Key zahlt dein DeepL-Konto statt das des Servers (kostenlos: „DeepL API Free“ unter deepl.com/pro-api,
+        Free-Keys enden auf „:fx“). Der Key bleibt auf diesem Gerät, kommt in keine Sicherung und nicht in den Drive-Abgleich,
+        auf jedem Gerät also neu eintragen. Bei jeder Übersetzung geht er über den Server dieser App an DeepL; der reicht
+        ihn nur weiter und speichert ihn nicht.
+      </p>
       <label className="field">
         <span className="label">
           App-Token (nur nötig, wenn auf dem Server APP_TOKEN gesetzt ist; mit Passwortschutz überflüssig)
