@@ -43,14 +43,20 @@ Cloudflare Pages Function (`functions/api/translate.ts`), die den Key geheim hä
 Davor sitzt ein Passwortschutz für die ganze App (`functions/_middleware.ts`).
 
 Einmal einrichten, und zwar in dieser Reihenfolge: erst Projekt und Secrets, dann hochladen. So ist
-die App nie ohne Passwort online.
+die App nie ohne Passwort online. `<projekt>` ist ein frei gewählter Name, die App liegt danach unter
+`https://<projekt>.pages.dev`.
 
 ```bash
 npx wrangler login
 npx wrangler pages project create <projekt> --production-branch main
 npx wrangler pages secret put DEEPL_API_KEY --project-name <projekt>
 npx wrangler pages secret put APP_PASSWORD --project-name <projekt>   # langes Passwort, z. B. vier Wörter
+npx wrangler kv namespace create LOGIN_ATTEMPTS                        # zählt Fehlversuche beim Anmelden
 ```
+
+Den KV-Namespace dann im Cloudflare-Dashboard ans Projekt binden: **Workers & Pages → `<projekt>` →
+Einstellungen → Bindungen → Hinzufügen → KV-Namespace**, Variablenname `LOGIN_ATTEMPTS`, Namespace
+`LOGIN_ATTEMPTS`. Ohne diese Bindung läuft alles, nur ohne Begrenzung der Anmeldeversuche.
 
 Danach bei jedem neuen Stand:
 
@@ -63,7 +69,8 @@ npx wrangler pages deploy dist --project-name <projekt> --branch main
 geändertes Secret gilt erst ab dem nächsten Deploy.
 
 Vor dem ersten Deploy lässt sich alles lokal in der echten Cloudflare-Laufzeit prüfen:
-`npx wrangler pages dev dist --binding APP_PASSWORD=test` (DeepL-Key und `APP_TOKEN` liest wrangler aus `.env`).
+`npx wrangler pages dev dist --binding APP_PASSWORD=test --kv LOGIN_ATTEMPTS` (DeepL-Key und `APP_TOKEN` liest
+wrangler aus `.env`).
 
 **Passwortschutz:** Ist `APP_PASSWORD` gesetzt, liefert Cloudflare ohne Anmeldung nur eine
 Anmeldeseite aus, keine App, kein Wörterbuch und keine Übersetzung. Nach der Anmeldung bleibt das
@@ -72,6 +79,13 @@ Ein neues Passwort meldet alle Geräte ab. Öffentlich bleiben nur Manifest und 
 Installieren braucht, und das Hintergrundmuster der Anmeldeseite. Ohne `APP_PASSWORD` ist die App für jeden offen, der die Adresse kennt; dann
 wenigstens `APP_TOKEN` setzen (und in der App unter **Einstellungen → App-Token** eintragen), damit
 niemand dein DeepL-Kontingent verbraucht.
+
+**Fehlversuche:** Pro IP-Adresse (bei IPv6 pro /64-Netz) sind 5 falsche Passwörter in einer Stunde
+erlaubt, gezählt ab dem ersten Fehlversuch. Danach lehnt die Anmeldeseite bis zum Ende dieser Stunde
+alles ab, auch das richtige Passwort, ohne es zu prüfen (Antwort 429). Eine erfolgreiche Anmeldung setzt
+den Zähler zurück. Alle Geräte im selben WLAN teilen sich meist eine Adresse; schon angemeldete Geräte
+merken von einer Sperre nichts. Cloudflares eigene Rate-Limiting-Regeln gibt es nur für eigene Domains,
+nicht für `….pages.dev`, darum zählt die App selbst (`server/loginLimit.ts`, KV-Namespace `LOGIN_ATTEMPTS`).
 
 Immer mit `--branch main` deployen: Andere Branches landen als Vorschau unter einer eigenen Adresse,
 und dort fehlen die Secrets, also auch der Passwortschutz.
@@ -233,7 +247,7 @@ Sicherungen passen. Ein schon angelegter Drive-Ordner „Vokabel-Reader“ wird 
 ## Aufbau
 
 ```
-functions/_middleware.ts     Passwortschutz → server/auth.ts (auch im Vite-Dev-/Preview-Server)
+functions/_middleware.ts     Passwortschutz → server/auth.ts + loginLimit.ts (auch im Vite-Dev-/Preview-Server)
 functions/api/translate.ts   Cloudflare Pages Function → server/translate.ts (auch im Vite-Dev-Server)
 scripts/build-dictionary.mjs Ding → public/dict/en-de/<shard>.json
 scripts/make-icons.mjs       images/*.svg → Logo-Pfade, Icons, Wasserzeichen
@@ -247,3 +261,12 @@ src/enrich/                  Prompt bauen, Claude-Antwort prüfen und übernehme
 src/quiz/                    FSRS-Planung und Quiz
 src/db/                      Dexie-Schema und Datenzugriff
 ```
+
+## Lizenz
+
+Der Code dieses Repos steht unter der [MIT-Lizenz](LICENSE). Nicht darunter fallen:
+
+- foliate-js: eigenes Repo, als Git-Submodule eingebunden (MIT, das enthaltene PDF.js Apache-2.0).
+- Das Ding-Wörterbuch (GPL-2.0+, Frank Richter, TU Chemnitz): `npm run build:dict` lädt es herunter und
+  erzeugt daraus lokal `public/dict/`; es ist nicht im Repo.
+- Abhängigkeiten aus npm: jeweils eigene Lizenz (MIT bzw. Apache-2.0, siehe Tabelle oben).

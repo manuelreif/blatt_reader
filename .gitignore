@@ -11,3 +11,8 @@ playwright-report/
 e2e/fixtures/generated/
 *.log
 .wrangler/
+
+# local only: live address, project names, IDs (repo is public)
+CLAUDE.local.md
+# logo originals from the image generator (C2PA metadata); the traced SVGs are the sources
+images/*.png

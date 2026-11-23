@@ -52,8 +52,8 @@ Fehlt dieser Schritt, meldet die App: „Die Google Drive API ist im Google-Clou
    - `http://localhost:5173` für `npm run dev`
    - `http://localhost:5179` für die E2E-Tests (optional)
    - `http://localhost:4179` für den Preview-Server (optional)
-   - `https://<projekt>.pages.dev`, die Cloudflare-Adresse. Steht sie noch nicht fest, ergänzt du
-     sie später.
+   - `https://<projekt>.pages.dev`, die Cloudflare-Adresse (`<projekt>` = Name deines
+     Cloudflare-Projekts). Steht sie noch nicht fest, ergänzt du sie später.
 4. **Autorisierte Weiterleitungs-URIs** (Authorized redirect URIs) lässt du leer.
 5. Klick auf **Erstellen** und **kopier die Client-ID** aus dem Fenster, das dann erscheint. Ein
    Client-Secret, falls angezeigt, braucht die App nicht. Es gehört weder in `.env` noch ins Repo.

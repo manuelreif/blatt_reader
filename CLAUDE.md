@@ -20,7 +20,7 @@ Ablenker) durch Claude per Copy-Paste. Setup, Deploy und Bedienung: siehe `READM
 ```bash
 npm run dev            # Vite-Dev-Server inkl. /api/translate (Key aus .env)
 npm run typecheck
-npm test               # Vitest, 126 Tests
+npm test               # Vitest, 133 Tests
 npm run e2e            # Playwright gegen Dev-Server (Port 5179), erzeugt Fixtures selbst
 npm run build && E2E_PREVIEW=1 npm run e2e   # gegen Produktions-Build (Port 4179), inkl. CSP- und Passwort-Test
 npm run build:dict     # Ding laden (.cache/) → public/dict/en-de/*.json
@@ -33,7 +33,7 @@ Vor jedem Commit: `npm run typecheck && npm test && npm run e2e`.
 
 - Vite 8 + React 19 + TS (strict), Hash-Router in `src/router.ts`, keine UI-Bibliothek, CSS in `src/styles.css`
   (CSS-Variablen, Hell/Dunkel).
-- **Logo und Design:** Quellen in `images/` (nachgezeichnete SVGs vom Nutzer). `scripts/make-icons.mjs` macht
+- **Logo und Design:** Quellen in `images/*.svg` (nachgezeichnet vom Nutzer; die PNG-Vorlagen liegen nur lokal). `scripts/make-icons.mjs` macht
   daraus `src/brand/logoPaths.ts` (Pfade, generiert), Favicon, PWA-Icons (rund; maskable und Apple randlos navy),
   `public/brand/pattern.svg` (Wasserzeichen-Kachel) und `public/brand/blatt-reader.svg` (Logo mit Schriftzug).
   Kreis und Ring sind dabei exakte Kreise, nur Blatt-Symbol und Schriftzug kommen aus der Vorlage.
@@ -86,6 +86,11 @@ Vor jedem Commit: `npm run typecheck && npm test && npm run e2e`.
   `vr_session` = `v1.<ablauf>.<HMAC mit dem Passwort>`, 400 Tage, verlängert sich unter 200 Tagen Rest.
   Seiten ohne Sitzung → 303 auf `/login`, alles andere → 401-JSON mit `login: '/login'` (Client zeigt
   „Anmelden“-Link). Manifest und Icons bleiben öffentlich (Chrome holt das Manifest ohne Cookies).
+  **Fehlversuche** begrenzt `server/loginLimit.ts` (`loginLimiter`): 5 pro Stunde ab dem ersten, pro IPv4 bzw.
+  IPv6-/64 (`clientKey`), dann 429 + `Retry-After` ohne Passwortprüfung, Erfolg löscht den Zähler. IP aus
+  `cf-connecting-ip` (Cloudflare) bzw. `opts.ip` = Socket-Adresse (Vite). Zähler in KV (Binding `LOGIN_ATTEMPTS`,
+  nur im Dashboard gebunden, kein `wrangler.toml`), im Vite-Server `memoryAttemptStore()`. Fehlt der Store oder
+  wirft KV (Free: 1000 Schreibvorgänge/Tag), geht es ohne Begrenzung weiter: nie den Besitzer aussperren.
 - **Wörterbuch:** `src/dict/dictionary.ts` lädt Shards nach Bedarf; `index.json` listet alle Shards, ein
   Wort aus einem nicht gelisteten Shard ist also „kein Eintrag“, ein nicht ladbarer Shard „nicht
   verfügbar“ (`lookupKey` → `null`, Popup zeigt Hinweis). `downloadDictionary` legt alles in den Cache
@@ -169,8 +174,14 @@ Vor jedem Commit: `npm run typecheck && npm test && npm run e2e`.
 - `/login` und `/logout` stehen in `navigateFallbackDenylist`, sonst beantwortet der Service Worker sie
   mit der gecachten App und die Anmeldeseite erscheint nie. Der Preview-Server für E2E läuft mit
   `APP_PASSWORD=e2e-password` (`playwright.config.ts`), die Tests melden sich in `beforeEach` an.
+  Alle E2E-Anfragen kommen von derselben Adresse: höchstens 4 Fehlversuche ohne erfolgreiche Anmeldung
+  dazwischen, sonst sperrt die Login-Bremse die übrigen Tests aus.
+- **Das Repo ist öffentlich.** Live-Adresse, Cloudflare-Projektname, Google-Cloud-Projekt, KV-ID und Ähnliches
+  nur in `CLAUDE.local.md` (gitignored), in committeten Dateien Platzhalter wie `<projekt>`. Der
+  Cloudflare-Projektname ist zugleich die Subdomain. Auch keine persönlichen Angaben (Abos, Pfade) committen.
+  Die Logo-PNGs in `images/` (mit C2PA-Herkunftsdaten des Bildgenerators) sind gitignored.
 
-## Stand (22.11.2026)
+## Stand (23.11.2026)
 
 **Fertig (Phase 0 + MVP):** Bibliothek (Import, Cover, Fortschritt), Reader für EPUB und PDF (TOC,
 Schriftgröße, Zoom, Positionsregler), Nachschlage-Popup (Wörterbuch + DeepL, Vorlesen, Speichern,
@@ -196,19 +207,21 @@ Markierungen mit Farben, Notizen und Liste pro Buch, mit Sicherung und Drive-Abg
 Einstellungen), Farbschema Navy/Creme aus dem Logo, Blatt-Muster als Wasserzeichen im Hintergrund.
 Reader-Leiste läuft am Handy nicht mehr über den Bildschirmrand hinaus.
 
-**Live (22.11.2026):** https://<projekt>.pages.dev (Cloudflare Pages, Projekt `<projekt>`, Branch `main`,
-Secrets `DEEPL_API_KEY` und `APP_PASSWORD`). Deploy: `npm run build && npx wrangler pages deploy dist
---project-name <projekt> --branch main`. Echt geprüft: Passwortschutz in der Cloudflare-Laufzeit (lokal mit
-`wrangler pages dev` und live), DeepL über die Pages Function, App am Desktop, Google-Login am Desktop.
-Die Google-Client-ID (siehe `CLAUDE.local.md`) hat als JavaScript-Quellen die drei
-localhost-Ports, `https://<projekt>.pages.dev`.
-Eine neue Domain dort eintragen, sonst `origin_mismatch`.
+**Live (seit 22.11.2026):** auf Cloudflare Pages, Branch `main`, Secrets `DEEPL_API_KEY` und `APP_PASSWORD`,
+KV-Binding `LOGIN_ATTEMPTS`. Adresse, Projektname, Deploy-Befehl und Google-Client stehen in `CLAUDE.local.md`.
+Echt geprüft: Passwortschutz in der Cloudflare-Laufzeit (lokal mit `wrangler pages dev` und live), DeepL über
+die Pages Function, App am Desktop, Google-Login am Desktop. Die Google-Client-ID hat als JavaScript-Quellen die
+drei localhost-Ports und die Live-Adresse. Eine neue Domain dort eintragen, sonst `origin_mismatch`.
 
 **Neu (22.11.2026):** Wörterbuch zuerst, DeepL auf Knopfdruck (Einstellung „DeepL abfragen“), ganze Sätze im
 Übersetzen-Modus mit DeepL übersetzen und als Markierungsnotiz behalten. Claude-Anreicherung ersetzt
 Übersetzungen, die nur aus dem Wörterbuch stammen, automatisch.
 
-**Als Nächstes (geplant ab 23.11.2026): Praxistest auf Android**, in Chrome https://<projekt>.pages.dev
+**Neu (23.11.2026):** Repo für die Veröffentlichung vorbereitet: MIT-Lizenz, Historie bereinigt (Live-Adresse,
+Projektnamen, persönliche Angaben und Logo-PNGs entfernt; Backup-Bundle liegt lokal neben dem Projektordner),
+Login-Bremse (5 Fehlversuche pro Stunde und IP).
+
+**Als Nächstes (geplant ab 23.11.2026): Praxistest auf Android**, in Chrome die Live-Adresse (`CLAUDE.local.md`)
 öffnen, anmelden, Menü → „App installieren“, dann in der installierten App:
 - [ ] Icon und Start ohne Browserleiste; Anmeldung bleibt nach Neustart erhalten
 - [ ] Buch importieren (vom Gerät und über Drive)
