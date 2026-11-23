@@ -1,6 +1,7 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Emblem, Glyph } from '../brand/Logo'
+import { InstallButton } from '../pwa/InstallButton'
 import { deleteBook, quizBooks, type QuizBook } from '../db/repo'
 import { db, type Book } from '../db/schema'
 import { DriveBar } from '../drive/DriveBar'
@@ -98,6 +99,7 @@ export function LibraryView() {
           <Emblem />
           <p>Noch keine Bücher. Öffne eine EPUB- oder PDF-Datei (oder zieh sie hierher).</p>
           <p className="muted">Die Dateien bleiben auf diesem Gerät, im Speicher des Browsers.</p>
+          <InstallButton className="primary" />
         </div>
       )}
       <ul className="book-grid">

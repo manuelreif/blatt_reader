@@ -20,7 +20,7 @@ Ablenker) durch Claude per Copy-Paste. Setup, Deploy und Bedienung: siehe `READM
 ```bash
 npm run dev            # Vite-Dev-Server inkl. /api/translate (Key aus .env)
 npm run typecheck
-npm test               # Vitest, 133 Tests
+npm test               # Vitest, 137 Tests
 npm run e2e            # Playwright gegen Dev-Server (Port 5179), erzeugt Fixtures selbst
 npm run build && E2E_PREVIEW=1 npm run e2e   # gegen Produktions-Build (Port 4179), inkl. CSP- und Passwort-Test
 npm run build:dict     # Ding laden (.cache/) → public/dict/en-de/*.json
@@ -81,6 +81,11 @@ Vor jedem Commit: `npm run typecheck && npm test && npm run e2e`.
   Schema-Version); `src/translate/pending.ts` holt das nach (App-Start, `online`-Event, nächster
   erfolgreicher Lookup, Knopf in den Einstellungen) und ersetzt `Term.translation` nur, solange dort
   noch der Wörterbuch-Ersatz von damals steht.
+- **App installieren:** `src/pwa/install.ts` fängt `beforeinstallprompt` ab (`initInstallPrompt()` in `main.tsx`,
+  vor dem ersten Render, sonst ist das Ereignis schon vorbei), unterdrückt damit Chromes eigenes Banner und spielt
+  den Dialog per Knopf ab (`InstallButton`: leere Bibliothek, Einstellungen → „App“). Ein Ereignis taugt nur für einen
+  Dialog; lehnt man ab, schickt Chrome später ein neues. Installiert erkennt die App an `display-mode: standalone`
+  bzw. `appinstalled`. Firefox und Safari kennen das Ereignis nicht, dort steht nur ein Hinweis auf das Browsermenü.
 - **Passwortschutz:** `server/auth.ts` (`authGate`), als Pages-Middleware `functions/_middleware.ts` vor
   allen Anfragen und in `vite.config.ts` vor dev/preview. Aus, solange `APP_PASSWORD` fehlt. Cookie
   `vr_session` = `v1.<ablauf>.<HMAC mit dem Passwort>`, 400 Tage, verlängert sich unter 200 Tagen Rest.
@@ -223,6 +228,8 @@ Login-Bremse (5 Fehlversuche pro Stunde und IP).
 
 **Als Nächstes (geplant ab 23.11.2026): Praxistest auf Android**, in Chrome die Live-Adresse (`CLAUDE.local.md`)
 öffnen, anmelden, Menü → „App installieren“, dann in der installierten App:
+- [ ] Nach dem Anmelden erscheint „App installieren“ (leere Bibliothek bzw. Einstellungen → App) und öffnet
+      Chromes Dialog; danach steht in den Einstellungen „Läuft als installierte App“
 - [ ] Icon und Start ohne Browserleiste; Anmeldung bleibt nach Neustart erhalten
 - [ ] Buch importieren (vom Gerät und über Drive)
 - [ ] Wort antippen: Popup passt auf den Bildschirm, Wörterbuch sofort, „+ DeepL“, speichern, Quizrunde

@@ -420,6 +420,9 @@ mark {
   background: color-mix(in srgb, var(--surface) 70%, transparent);
 }
 
+.empty button {
+  margin-top: 0.5rem;
+}
 .empty .emblem {
   width: 5rem;
   height: 5rem;

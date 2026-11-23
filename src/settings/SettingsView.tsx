@@ -1,6 +1,7 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useEffect, useRef, useState } from 'react'
 import { Lockup } from '../brand/Logo'
+import { InstallSection } from '../pwa/InstallButton'
 import { CARD_TYPES, type CardType } from '../db/schema'
 import { DriveSettings } from '../drive/DriveSettings'
 import {
@@ -189,6 +190,9 @@ export function SettingsView() {
   return (
     <section className="settings">
       <h1>Einstellungen</h1>
+
+      <h2>App</h2>
+      <InstallSection />
 
       <h2>Übersetzung</h2>
       <p className="muted">

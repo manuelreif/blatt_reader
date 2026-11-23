@@ -202,6 +202,31 @@ test('EPUB: selecting sentences translates them on request and keeps the transla
   await expect(page.getByText('Noch keine Vokabeln')).toBeVisible()
 })
 
+test('install button: appears when the browser offers installation and replays its dialog', async ({ page }) => {
+  // Chrome's real beforeinstallprompt needs an installable, engaged page; a synthetic one behaves the same for the app
+  const offerInstall = (outcome: 'accepted' | 'dismissed') =>
+    page.evaluate(o => {
+      const e = new Event('beforeinstallprompt', { cancelable: true }) as Event & Record<string, unknown>
+      e.prompt = async () => void ((window as unknown as Record<string, number>).promptCalls = ((window as unknown as Record<string, number>).promptCalls ?? 0) + 1)
+      e.userChoice = Promise.resolve({ outcome: o })
+      window.dispatchEvent(e)
+    }, outcome)
+  const promptCalls = () => page.evaluate(() => (window as unknown as Record<string, number>).promptCalls ?? 0)
+
+  await expect(page.getByText('Noch keine Bücher')).toBeVisible()
+  await expect(page.getByTestId('install-app')).toHaveCount(0)
+  await offerInstall('dismissed')
+  await page.getByTestId('install-app').click()
+  expect(await promptCalls()).toBe(1)
+  await expect(page.getByTestId('install-app')).toHaveCount(0)
+
+  await page.goto('/#/settings')
+  await offerInstall('accepted')
+  await page.getByTestId('install-app').click()
+  expect(await promptCalls()).toBe(2)
+  await expect(page.getByText('Läuft als installierte App')).toBeVisible()
+})
+
 test('settings: "always" asks DeepL at once, for words and for sentences', async ({ page }) => {
   await page.goto('/#/settings')
   await page.getByTestId('deepl-mode').selectOption('always')
