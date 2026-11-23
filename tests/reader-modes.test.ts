@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createGestureTracker, modeForKey, nextMode, tapZone, type TouchSample } from '../src/reader/modes'
+import { createGestureTracker, createPressTracker, modeForKey, nextMode, tapZone, type TouchSample } from '../src/reader/modes'
 
 const at = (t: number, touches: number, ...points: [number, number, number][]): TouchSample => ({
   t,
@@ -59,5 +59,56 @@ describe('gesture tracker', () => {
     const three = createGestureTracker()
     three.start(at(0, 3, [1, 100, 100], [2, 200, 100], [3, 300, 100]))
     expect(three.end(at(100, 0, [1, 100, 100], [2, 200, 100], [3, 300, 100]))).toBe(false)
+  })
+})
+
+describe('press tracker (own touch selection)', () => {
+  it('starts after the timer, then follows the finger until it lifts', () => {
+    const p = createPressTracker()
+    expect(p.start(at(0, 1, [1, 100, 100]))).toEqual({ kind: 'press' })
+    // a little jitter before the timer does not count as a swipe
+    expect(p.move(at(100, 1, [1, 104, 103]))).toBeNull()
+    expect(p.active).toBe(false)
+    expect(p.fire()).toEqual({ x: 100, y: 100 })
+    expect(p.active).toBe(true)
+    expect(p.move(at(600, 1, [1, 180, 102]))).toEqual({ kind: 'drag', x: 180, y: 102 })
+    expect(p.end(at(700, 0, [1, 190, 102]))).toEqual({ kind: 'done', x: 190, y: 102 })
+    expect(p.active).toBe(false)
+    expect(p.fire()).toBeNull()
+  })
+
+  it('gives way to swipes, taps and a second finger', () => {
+    const swipe = createPressTracker()
+    swipe.start(at(0, 1, [1, 100, 100]))
+    expect(swipe.move(at(80, 1, [1, 130, 100]))).toEqual({ kind: 'cancel' })
+    expect(swipe.fire()).toBeNull()
+    expect(swipe.move(at(500, 1, [1, 160, 100]))).toBeNull()
+
+    const tap = createPressTracker()
+    tap.start(at(0, 1, [1, 100, 100]))
+    expect(tap.end(at(120, 0, [1, 100, 100]))).toEqual({ kind: 'cancel' })
+    expect(tap.fire()).toBeNull()
+
+    const pinch = createPressTracker()
+    pinch.start(at(0, 1, [1, 100, 100]))
+    expect(pinch.fire()).not.toBeNull()
+    expect(pinch.start(at(600, 2, [2, 200, 100]))).toEqual({ kind: 'cancel' })
+    expect(pinch.active).toBe(false)
+    expect(pinch.end(at(700, 1, [1, 100, 100]))).toBeNull()
+
+    const cancelled = createPressTracker()
+    cancelled.start(at(0, 1, [1, 100, 100]))
+    cancelled.fire()
+    expect(cancelled.cancel()).toEqual({ kind: 'cancel' })
+    expect(cancelled.cancel()).toBeNull()
+  })
+
+  it('only follows its own finger', () => {
+    const p = createPressTracker()
+    p.start(at(0, 1, [7, 100, 100]))
+    p.fire()
+    expect(p.move(at(600, 1, [8, 300, 300]))).toBeNull()
+    expect(p.end(at(650, 0, [8, 300, 300]))).toBeNull()
+    expect(p.active).toBe(true)
   })
 })

@@ -7,6 +7,7 @@ import { PassageSheet } from '../lookup/PassageSheet'
 import type { LookupTarget } from '../lookup/lookupService'
 import { href } from '../router'
 import { getSettings, setSetting, useSettings } from '../settings/settings'
+import { trackVisualViewport } from '../util/visualViewport'
 import { flattenToc, loadFoliate, type FoliateView, type RelocateDetail } from './foliate'
 import { HighlightList } from './HighlightList'
 import { addHighlight, bookHighlights, drawnRange, highlightAt, paintHighlights } from './highlights'
@@ -103,6 +104,22 @@ export function ReaderView({ bookId, cfi }: { bookId: string; cfi?: string }) {
     return () => clearTimeout(t)
   }, [toast])
 
+  // the sheets stay in the part of the page on screen when it is pinch-zoomed (.overlay-layer)
+  useEffect(() => trackVisualViewport(), [])
+
+  // the word, passage or pending mark being worked on carries the lookup highlight; on touch
+  // screens it is the only sign of the selection (no native one, see attachReaderHandlers)
+  useEffect(() => {
+    const target = hit
+      ? { doc: hit.doc, range: hit.range }
+      : passage
+        ? { doc: passage.doc, range: passage.span.range }
+        : markSheet?.kind === 'pending'
+          ? { doc: markSheet.doc, range: markSheet.span.range }
+          : null
+    for (const doc of docs.current.keys()) markRange(doc, doc === target?.doc ? target.range : null)
+  }, [hit, passage, markSheet])
+
   // redraw the marks whenever they change (here or by a sync)
   useEffect(() => {
     highlightsRef.current = highlights ?? []
@@ -115,9 +132,7 @@ export function ReaderView({ bookId, cfi }: { bookId: string; cfi?: string }) {
 
   /** closes the word sheet and the passage sheet */
   function closeLookup() {
-    const current = hitRef.current
-    if (current) markRange(current.doc, null)
-    ;(current?.doc ?? passageRef.current?.doc)?.getSelection()?.removeAllRanges()
+    ;(hitRef.current?.doc ?? passageRef.current?.doc)?.getSelection()?.removeAllRanges()
     hitRef.current = null
     passageRef.current = null
     setHit(null)
@@ -180,8 +195,6 @@ export function ReaderView({ bookId, cfi }: { bookId: string; cfi?: string }) {
     const onHit = (doc: Document, index: number, h: LookupHit) => {
       const prev = hitRef.current
       if (prev && prev.surface === h.surface && prev.sentence === h.sentence) return
-      if (prev && prev.doc !== doc) markRange(prev.doc, null)
-      markRange(doc, h.range)
       let location: string | undefined
       try {
         location = view?.getCFI(index, h.range)
@@ -201,8 +214,6 @@ export function ReaderView({ bookId, cfi }: { bookId: string; cfi?: string }) {
     const onPassage = (doc: Document, index: number, p: PassageHit) => {
       const prev = passageRef.current
       if (prev && prev.doc === doc && prev.text === p.text) return
-      const word = hitRef.current
-      if (word) markRange(word.doc, null)
       hitRef.current = null
       setHit(null)
       const next: ActivePassage = { ...p, doc, index }
@@ -246,9 +257,9 @@ export function ReaderView({ bookId, cfi }: { bookId: string; cfi?: string }) {
               const span = markFromRange(doc, h.range)
               if (span) void saveMark(doc, index, span)
             },
-            onMarkSelection: () => {
+            onMarkSelection: touchSpan => {
               closeLookup()
-              const span = markFromSelection(doc)
+              const span = touchSpan ?? markFromSelection(doc)
               if (span) setMarkSheet({ kind: 'pending', doc, index, span })
             },
             onTapMark: (x, y) => {
@@ -482,33 +493,37 @@ export function ReaderView({ bookId, cfi }: { bookId: string; cfi?: string }) {
         <span className="muted">{pageLabel}</span>
       </footer>
 
-      {hit && book && <LookupSheet target={hit} book={{ id: book.id, title: book.title }} onClose={closeLookup} />}
-      {passage && <PassageSheet text={passage.text} context={passage.context} onMark={markPassage} onClose={closeLookup} />}
-      {!hit && !passage && markSheet && (
-        <HighlightSheet
-          id={markSheet.kind === 'saved' ? markSheet.id : undefined}
-          pendingText={markSheet.kind === 'pending' ? markSheet.span.text : undefined}
-          onPickPending={pickPending}
-          onLookup={lookupMarked}
-          onClose={() => {
-            if (markSheet.kind === 'pending') markSheet.doc.getSelection()?.removeAllRanges()
-            setMarkSheet(null)
-          }}
-        />
-      )}
-      {!hit && !passage && !markSheet && listOpen && (
-        <HighlightList
-          list={highlights ?? []}
-          onPick={h => {
-            setListOpen(false)
-            void view?.goTo(h.cfi ?? h.section)
-            setMarkSheet({ kind: 'saved', id: h.id })
-          }}
-          onClose={() => setListOpen(false)}
-        />
-      )}
-      <div className="reader-toast" role="status" aria-live="polite">
-        {toast && <span data-testid="mode-toast">{toast}</span>}
+      <div className="overlay-layer">
+        {hit && book && (
+          <LookupSheet target={hit} book={{ id: book.id, title: book.title }} onClose={closeLookup} onSaved={setToast} />
+        )}
+        {passage && <PassageSheet text={passage.text} context={passage.context} onMark={markPassage} onClose={closeLookup} />}
+        {!hit && !passage && markSheet && (
+          <HighlightSheet
+            id={markSheet.kind === 'saved' ? markSheet.id : undefined}
+            pendingText={markSheet.kind === 'pending' ? markSheet.span.text : undefined}
+            onPickPending={pickPending}
+            onLookup={lookupMarked}
+            onClose={() => {
+              if (markSheet.kind === 'pending') markSheet.doc.getSelection()?.removeAllRanges()
+              setMarkSheet(null)
+            }}
+          />
+        )}
+        {!hit && !passage && !markSheet && listOpen && (
+          <HighlightList
+            list={highlights ?? []}
+            onPick={h => {
+              setListOpen(false)
+              void view?.goTo(h.cfi ?? h.section)
+              setMarkSheet({ kind: 'saved', id: h.id })
+            }}
+            onClose={() => setListOpen(false)}
+          />
+        )}
+        <div className="reader-toast" role="status" aria-live="polite">
+          {toast && <span data-testid="reader-toast">{toast}</span>}
+        </div>
       </div>
     </div>
   )

@@ -184,6 +184,9 @@ gezielt nach genau diesen. Abgeschnittene Antworten werden repariert, soweit die
     gratis. **„+ DeepL“** holt die Übersetzung im Satzkontext dazu. **Mehrere Wörter auswählen** (bis 6): Phrase
     nachschlagen (z. B. Phrasal Verbs). **Einen Satz oder mehr auswählen**: eigenes Popup, „+ Mit DeepL übersetzen“
     zeigt die Übersetzung (kommt nicht in die Vokabeln), „Markieren“ legt sie als Notiz einer Markierung ab.
+  - **Auswählen am Handy/Tablet** (Übersetzen und Markieren): ein Wort kurz **gedrückt halten** und den Finger
+    weiterziehen, die Auswahl wächst wortweise mit. Die normale Textauswahl mit Griffen ist dort abgeschaltet, weil
+    Chrome daran seine Google-Suche („Touch to Search“) hängt. Mit der Maus wählt man wie gewohnt aus.
   - Wann DeepL von selbst fragt, steht unter **Einstellungen → DeepL abfragen**: nur auf Knopfdruck (Standard),
     wenn das Wörterbuch nichts findet, oder immer (dann auch für Sätze). Schon einmal Übersetztes kommt immer
     kostenlos aus dem Cache.
@@ -191,7 +194,9 @@ gezielt nach genau diesen. Abgeschnittene Antworten werden repariert, soweit die
   - 🖍 **Markieren**: Wort antippen markiert es sofort; Text auswählen (beliebig lang, auch über Absätze) und dann
     eine Farbe antippen. Eine Markierung antippen: Farbe ändern, Notiz, Löschen, Nachschlagen. ☰ oben listet alle
     Markierungen des Buchs, ein Tipp springt hin. Markierungen kommen mit in die Sicherung und den Drive-Abgleich.
-- **Speichern** legt das Wort mit Satz an; erneutes Nachschlagen in einem anderen Satz fügt einen weiteren Kontext hinzu.
+- **Speichern** legt das Wort mit Satz an (danach steht dort ein grünes „✓ Gespeichert“, oben kurz eine Meldung);
+  erneutes Nachschlagen in einem anderen Satz fügt einen weiteren Kontext hinzu.
+- Hineingezoomt (zwei Finger) erscheinen die Popups trotzdem ganz und in normaler Größe im sichtbaren Ausschnitt.
 - **Ignorieren** für Namen u. Ä.: Das Wort kommt nicht ins Quiz.
 - Blättern: Pfeiltasten, Wischen oder die Pfeile am Rand. Bei PDFs schaltet ⇔ zwischen ganzer Seite und voller Breite um.
 - **Quiz**: Leertaste zeigt die Antwort, 1–4 bewerten (Nochmal/Schwer/Gut/Einfach). Kartentypen in den Einstellungen.

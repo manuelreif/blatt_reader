@@ -756,7 +756,8 @@ h2 {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .reader-loading .emblem {
+  .reader-loading .emblem,
+  .saved-badge {
     animation: none;
   }
 }
@@ -778,13 +779,32 @@ h2 {
 
 /* lookup sheet */
 
-.sheet {
+/* The sheets and the toast live in this layer, which covers exactly the part of the page on
+   screen (the visual viewport) at normal size: pinch-zoomed or with the keyboard open, they still
+   show completely (--vv-* from src/util/visualViewport.ts). */
+.overlay-layer {
   position: fixed;
+  left: 0;
+  top: 0;
+  width: calc(var(--vv-width, 100vw) * var(--vv-scale, 1));
+  height: calc(var(--vv-height, 100dvh) * var(--vv-scale, 1));
+  transform: translate(var(--vv-left, 0px), var(--vv-top, 0px)) scale(calc(1 / var(--vv-scale, 1)));
+  transform-origin: 0 0;
+  pointer-events: none;
+  z-index: 20;
+}
+
+.overlay-layer > .sheet {
+  pointer-events: auto;
+}
+
+.sheet {
+  position: absolute;
   left: 50%;
   bottom: 0;
   transform: translateX(-50%);
   width: min(640px, 100%);
-  max-height: 55dvh;
+  max-height: 55%;
   display: flex;
   flex-direction: column;
   background: var(--surface);
@@ -865,6 +885,37 @@ h2 {
   margin: 0.15rem 0;
 }
 
+/* after saving: in place of the save button, impossible to miss */
+.saved-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3em;
+  padding: 0.45em 0.9em;
+  border-radius: 8px;
+  background: var(--ok);
+  color: var(--surface);
+  font-weight: 600;
+  white-space: nowrap;
+  animation: saved-pop 0.25s ease-out;
+}
+
+@keyframes saved-pop {
+  from {
+    transform: scale(0.85);
+    opacity: 0.4;
+  }
+}
+
+.saved-badge.is-ignored {
+  background: var(--line);
+  color: var(--text);
+}
+
+.saved-info {
+  flex: 1;
+  min-width: 0;
+}
+
 .sheet-actions {
   display: flex;
   gap: 0.5rem;
@@ -880,7 +931,7 @@ h2 {
     bottom: 1rem;
     transform: none;
     width: 380px;
-    max-height: calc(100dvh - 6rem);
+    max-height: calc(100% - 6rem);
     border-radius: 14px;
     border-bottom: 1px solid var(--line);
   }
@@ -1224,12 +1275,14 @@ h2 {
 }
 
 .reader-toast {
-  position: fixed;
+  position: absolute;
   top: 3.4rem;
   left: 50%;
   transform: translateX(-50%);
   z-index: 30;
   pointer-events: none;
+  /* one line while it fits (left: 50% would otherwise halve the width) */
+  width: max-content;
   max-width: calc(100% - 2rem);
 }
 

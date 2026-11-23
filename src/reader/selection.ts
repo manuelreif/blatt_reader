@@ -2,7 +2,7 @@
 // (an EPUB section or a PDF.js text layer, both rendered by foliate-js in iframes).
 import type { HighlightColor } from '../db/schema'
 import { cleanText, findSentence, normalizeWord, PARAGRAPH_BREAK, wordAt } from '../nlp/sentence'
-import { createGestureTracker, type ReaderMode, type TouchSample } from './modes'
+import { createGestureTracker, createPressTracker, LONG_PRESS_MS, type ReaderMode, type TouchSample } from './modes'
 
 const BLOCK = new Set([
   'p', 'div', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'td', 'th', 'dd', 'dt',
@@ -166,6 +166,25 @@ function wordNear(text: string, pos: number) {
   return w && { start: w.start + from, end: w.end + from }
 }
 
+const SPACE = /[\s\u2029]/
+
+/**
+ * The own touch selection: from the anchor word to the word at `pos` (either direction),
+ * whole words, without the whitespace the finger may rest on.
+ */
+export function extendSelection(text: string, anchor: { start: number; end: number }, pos: number) {
+  if (pos >= anchor.start && pos <= anchor.end) return { start: anchor.start, end: anchor.end }
+  const w = wordNear(text, pos)
+  if (pos < anchor.start) {
+    let start = w ? Math.min(w.start, pos) : pos
+    while (start < anchor.start && SPACE.test(text[start])) start++
+    return { start, end: anchor.end }
+  }
+  let end = w ? Math.max(w.end, pos) : pos
+  while (end > anchor.end && SPACE.test(text[end - 1])) end--
+  return { start: anchor.start, end }
+}
+
 /** Offsets of a DOM range in the section text, widened to whole words; null if empty. */
 export function markFromRange(doc: Document, range: Range): MarkSpan | null {
   return doc.body ? spanIn(buildBlockText(doc.body), range) : null
@@ -210,9 +229,15 @@ const PASSAGE_CONTEXT = 800
 /** The current selection as a passage to translate; null if empty. */
 export function passageFromSelection(doc: Document): PassageHit | null {
   const sel = doc.getSelection()
-  if (!doc.body || !sel || sel.isCollapsed || !sel.rangeCount) return null
+  if (!sel || sel.isCollapsed || !sel.rangeCount) return null
+  return passageFromRange(doc, sel.getRangeAt(0))
+}
+
+/** A range (selection or own touch selection) as a passage to translate; null if empty. */
+export function passageFromRange(doc: Document, range: Range): PassageHit | null {
+  if (!doc.body) return null
   const bt = buildBlockText(doc.body)
-  const span = spanIn(bt, sel.getRangeAt(0))
+  const span = spanIn(bt, range)
   if (!span) return null
   const text = cleanText(span.text)
   if (!text) return null
@@ -260,8 +285,8 @@ export interface ReaderHandlers {
   onPassage(p: PassageHit): void
   /** mark mode: tapped word that is not marked yet */
   onMarkWord(hit: LookupHit): void
-  /** mark mode: there is a selection (called again while it changes) */
-  onMarkSelection(): void
+  /** mark mode: there is a selection (called again while it changes); `span` for the own touch selection */
+  onMarkSelection(span?: MarkSpan): void
   /** mark mode: tap on a mark; returns false if there is none at that point */
   onTapMark(x: number, y: number): boolean
   /** read mode: tap; x in the coordinates of the app window */
@@ -284,30 +309,166 @@ function outerX(doc: Document, x: number): number {
   return frame.left + x * (win.innerWidth ? frame.width / win.innerWidth : 1)
 }
 
-/** Taps, selections and two-finger taps in a book document, dispatched by the reader mode. */
+/** the element of an event target, which may be a text node (no instanceof: the book lives in an iframe) */
+function elementOf(target: EventTarget | null): Element | null {
+  const n = target as Node | null
+  if (!n || typeof n.nodeType !== 'number') return null
+  return n.nodeType === Node.ELEMENT_NODE ? (n as Element) : n.parentElement
+}
+
+const inLink = (target: EventTarget | null) => !!elementOf(target)?.closest('a[href]')
+
+/**
+ * Taps, selections and two-finger taps in a book document, dispatched by the reader mode.
+ *
+ * On touch screens, translate and mark mode do not use the native selection: it brings handles,
+ * Android's menu with "web search" and Chrome's "Touch to Search" bar. Instead, pressing a word
+ * for LONG_PRESS_MS and dragging selects whole words (drawn with the lookup highlight).
+ */
 export function attachReaderHandlers(doc: Document, h: ReaderHandlers) {
   let down: { x: number; y: number; t: number } | null = null
   let selTimer: ReturnType<typeof setTimeout> | undefined
   const gesture = createGestureTracker()
   const opts = { passive: true }
-  doc.addEventListener('touchstart', e => gesture.start(touchSample(e)), opts)
-  doc.addEventListener('touchmove', e => gesture.move(touchSample(e)), opts)
-  const onTouchEnd = (e: TouchEvent) => {
-    if (gesture.end(touchSample(e))) {
-      doc.getSelection()?.removeAllRanges()
-      h.onCycleMode()
+
+  /** the last pointer was a finger: no native selection outside read mode */
+  let touchInput = false
+  const ownSelection = () => touchInput && h.mode() !== 'read'
+  const press = createPressTracker()
+  let pressTimer: ReturnType<typeof setTimeout> | undefined
+  /** the own touch selection: section text, the word pressed first, the current range */
+  let touchSel: { bt: BlockText; anchor: { start: number; end: number }; range: Range } | null = null
+  /** this touch made an own selection, so its pointerup is no tap */
+  let pressUsed = false
+
+  const dropTouchSelection = () => {
+    clearTimeout(pressTimer)
+    if (!touchSel) return
+    touchSel = null
+    markRange(doc, null)
+  }
+
+  const beginTouchSelection = (x: number, y: number) => {
+    const caret = h.mode() !== 'read' && doc.body ? caretAt(doc, x, y) : null
+    const bt = caret && buildBlockText(doc.body)
+    const pos = caret && bt ? offsetOf(bt, caret.node, caret.offset) : null
+    const w = bt && pos !== null ? wordNear(bt.text, pos) : null
+    const range = bt && w && rangeFromOffsets(bt, w.start, w.end)
+    if (!bt || !w || !range || !rangeContainsPoint(range, x, y)) return void press.cancel()
+    touchSel = { bt, anchor: w, range }
+    pressUsed = true
+    doc.getSelection()?.removeAllRanges()
+    markRange(doc, range)
+    try {
+      navigator.vibrate?.(10)
+    } catch {
+      // no vibration, no matter
     }
   }
-  doc.addEventListener('touchend', onTouchEnd, opts)
-  doc.addEventListener('touchcancel', onTouchEnd, opts)
+
+  const extendTouchSelection = (x: number, y: number) => {
+    const sel = touchSel
+    const caret = sel && caretAt(doc, x, y)
+    const pos = sel && caret ? offsetOf(sel.bt, caret.node, caret.offset) : null
+    if (!sel || pos === null) return
+    const { start, end } = extendSelection(sel.bt.text, sel.anchor, pos)
+    const range = rangeFromOffsets(sel.bt, start, end)
+    if (!range) return
+    sel.range = range
+    markRange(doc, range)
+  }
+
+  const finishTouchSelection = () => {
+    const sel = touchSel
+    touchSel = null
+    if (!sel) return
+    const mode = h.mode()
+    if (mode === 'translate') {
+      const hit = hitFromRange(sel.range)
+      if (hit) return h.onLookup(hit)
+      const passage = passageFromRange(doc, sel.range)
+      if (passage) return h.onPassage(passage)
+    } else if (mode === 'mark') {
+      const span = markFromRange(doc, sel.range)
+      if (span) return h.onMarkSelection(span)
+    }
+    markRange(doc, null)
+  }
+
+  doc.addEventListener(
+    'touchstart',
+    e => {
+      const sample = touchSample(e)
+      gesture.start(sample)
+      const step = press.start(sample)
+      if (step?.kind === 'cancel') dropTouchSelection()
+      if (step?.kind !== 'press' || h.mode() === 'read' || inLink(e.target)) return
+      clearTimeout(pressTimer)
+      pressTimer = setTimeout(() => {
+        const at = press.fire()
+        if (at) beginTouchSelection(at.x, at.y)
+      }, LONG_PRESS_MS)
+    },
+    opts,
+  )
+  doc.addEventListener('touchmove', e => gesture.move(touchSample(e)), opts)
+  // ahead of foliate's own touch handlers on the document, which turn or scroll the page
+  doc.defaultView?.addEventListener(
+    'touchmove',
+    e => {
+      const step = press.move(touchSample(e))
+      if (step?.kind === 'cancel') clearTimeout(pressTimer)
+      if (!press.active) return
+      if (e.cancelable) e.preventDefault()
+      e.stopPropagation()
+      if (step?.kind === 'drag') extendTouchSelection(step.x, step.y)
+    },
+    { capture: true, passive: false },
+  )
+  doc.addEventListener(
+    'touchend',
+    e => {
+      const sample = touchSample(e)
+      if (gesture.end(sample)) {
+        dropTouchSelection()
+        doc.getSelection()?.removeAllRanges()
+        return h.onCycleMode()
+      }
+      const step = press.end(sample)
+      if (step) clearTimeout(pressTimer)
+      if (step?.kind === 'done') finishTouchSelection()
+    },
+    opts,
+  )
+  doc.addEventListener(
+    'touchcancel',
+    e => {
+      gesture.end(touchSample(e))
+      press.cancel()
+      dropTouchSelection()
+    },
+    opts,
+  )
+
+  // no native selection by finger outside read mode (programmatic selections and the mouse stay)
+  const blockNative = (e: Event) => {
+    if (ownSelection() && !inLink(e.target)) e.preventDefault()
+  }
+  doc.addEventListener('selectstart', blockNative)
+  doc.addEventListener('contextmenu', blockNative)
 
   doc.addEventListener('pointerdown', e => {
     down = { x: e.clientX, y: e.clientY, t: e.timeStamp }
+    touchInput = e.pointerType === 'touch'
+    pressUsed = false
+  })
+  doc.addEventListener('pointercancel', () => {
+    down = null
   })
   doc.addEventListener('pointerup', e => {
     const start = down
     down = null
-    if (e.button !== 0 || gesture.multi(e.timeStamp)) return
+    if (e.button !== 0 || gesture.multi(e.timeStamp) || pressUsed) return
     if ((e.target as Element | null)?.closest?.('a[href]')) return
     setTimeout(() => {
       const mode = h.mode()
@@ -335,7 +496,7 @@ export function attachReaderHandlers(doc: Document, h: ReaderHandlers) {
       else h.onLookup(hit)
     }, 10)
   })
-  // long-press selection on touch screens ends without a usable pointerup
+  // a native selection that ends without a usable pointerup (keyboard, or a finger in read mode)
   doc.addEventListener('selectionchange', () => {
     clearTimeout(selTimer)
     selTimer = setTimeout(() => {

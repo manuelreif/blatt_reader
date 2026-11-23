@@ -34,8 +34,8 @@ async function bookFrame(page: Page, needle: string): Promise<Frame> {
   throw new Error('frame not found')
 }
 
-/** Clicks in the middle of `word` (n-th occurrence) inside the book frame. */
-async function clickWord(page: Page, frame: Frame, word: string, occurrence = 0, charOffset?: number) {
+/** The middle of `word` (n-th occurrence) inside the book frame, in page coordinates. */
+async function wordPoint(frame: Frame, word: string, occurrence = 0, charOffset?: number) {
   const point = await frame.evaluate(
     ({ word, occurrence, charOffset }) => {
       const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT)
@@ -60,7 +60,13 @@ async function clickWord(page: Page, frame: Frame, word: string, occurrence = 0,
   )
   if (!point) throw new Error(`word ${word} not found`)
   const box = (await (await frame.frameElement()).boundingBox())!
-  await page.mouse.click(box.x + point.x, box.y + point.y)
+  return { x: box.x + point.x, y: box.y + point.y }
+}
+
+/** Clicks in the middle of `word` (n-th occurrence) inside the book frame. */
+async function clickWord(page: Page, frame: Frame, word: string, occurrence = 0, charOffset?: number) {
+  const { x, y } = await wordPoint(frame, word, occurrence, charOffset)
+  await page.mouse.click(x, y)
 }
 
 test.beforeEach(async ({ page }) => {
@@ -89,7 +95,10 @@ test('EPUB: tap a word, save it, enrich it with a pasted answer and review it', 
   await expect(page.getByTestId('translation-input')).toHaveValue('Schätzer')
   expect(deeplRequests).toEqual([{ text: 'estimator', context: 'The unbiased estimator was surprisingly reliable.' }])
   await page.getByTestId('save-term').click()
+  // saving is impossible to miss: a green badge in place of the button and a toast
+  await expect(page.getByTestId('saved-state')).toHaveText('✓ Gespeichert')
   await expect(sheet).toContainText('Neu in deinen Vokabeln')
+  await expect(page.getByTestId('reader-toast')).toHaveText('✓ „estimator“ gespeichert')
 
   // a phrase via selection
   await page.keyboard.press('Escape')
@@ -202,6 +211,108 @@ test('EPUB: selecting sentences translates them on request and keeps the transla
   await expect(page.getByText('Noch keine Vokabeln')).toBeVisible()
 })
 
+/** How many ranges the CSS highlight `name` has in the book frame (0 if none). */
+const highlightSize = (frame: Frame, name: string) =>
+  frame.evaluate(n => (CSS as unknown as { highlights: Map<string, Set<Range>> }).highlights.get(n)?.size ?? 0, name)
+
+test.describe('touch screen', () => {
+  test.use({ hasTouch: true })
+
+  /** Presses `from`, holds it, drags to `to` and lifts the finger, as when selecting on a phone. */
+  async function pressAndDrag(page: Page, from: { x: number; y: number }, to: { x: number; y: number }) {
+    const cdp = await page.context().newCDPSession(page)
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [from] })
+    await page.waitForTimeout(700)
+    for (let i = 1; i <= 4; i++) {
+      const point = { x: from.x + ((to.x - from.x) * i) / 4, y: from.y + ((to.y - from.y) * i) / 4 }
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [point] })
+    }
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
+    await cdp.detach()
+  }
+
+  test('EPUB: press and drag selects words without a native selection (no handles, no Touch to Search)', async ({ page }) => {
+    await page.setInputFiles('[data-testid=book-input]', fixture('sample.epub'))
+    const frame = await bookFrame(page, 'gave up')
+    const nativeSelection = () => frame.evaluate(() => document.getSelection()!.toString())
+
+    // translate mode: a phrase
+    await pressAndDrag(page, await wordPoint(frame, 'gave'), await wordPoint(frame, 'up', 1))
+    const lookup = page.getByTestId('lookup-sheet')
+    await expect(lookup).toContainText('gave up')
+    await expect(lookup).toContainText('Grundform: give up')
+    expect(await nativeSelection()).toBe('')
+    expect(await highlightSize(frame, 'vr-lookup')).toBe(1)
+    await page.keyboard.press('Escape')
+    await expect(lookup).toHaveCount(0)
+    await expect.poll(() => highlightSize(frame, 'vr-lookup')).toBe(0)
+
+    // translate mode: a whole sentence opens the passage sheet
+    await pressAndDrag(page, await wordPoint(frame, 'Every'), await wordPoint(frame, 'reliable'))
+    // up to the word under the finger (here without the full stop after it)
+    await expect(page.getByTestId('passage-sheet')).toContainText(`„${P2.slice(0, -1)}“`)
+    expect(await nativeSelection()).toBe('')
+    await page.keyboard.press('Escape')
+
+    // mark mode: the selection waits for a color
+    await page.keyboard.press('m')
+    await expect(page.getByTestId('mode-switch')).toContainText('Markieren')
+    await pressAndDrag(page, await wordPoint(frame, 'looked'), await wordPoint(frame, 'dictionary'))
+    const mark = page.getByTestId('mark-sheet')
+    await expect(mark).toContainText('looked the word up in a dictionary')
+    expect(await nativeSelection()).toBe('')
+    await mark.getByRole('button', { name: 'Grün' }).click()
+    await expect.poll(() => highlightSize(frame, 'vr-hl-green')).toBe(1)
+    await expect.poll(() => highlightSize(frame, 'vr-lookup')).toBe(0)
+
+    // the browser's own selection (and long-press menu) by finger is refused outside read mode;
+    // headless Chromium does not select on a long press, so the events are sent directly
+    const refused = (pointerType: string) =>
+      frame.evaluate(type => {
+        const p = document.getElementById('p1')!
+        p.dispatchEvent(new PointerEvent('pointerdown', { pointerType: type, bubbles: true }))
+        p.dispatchEvent(new PointerEvent('pointercancel', { pointerType: type, bubbles: true }))
+        const select = new Event('selectstart', { bubbles: true, cancelable: true })
+        p.firstChild!.dispatchEvent(select)
+        const menu = new MouseEvent('contextmenu', { bubbles: true, cancelable: true })
+        p.dispatchEvent(menu)
+        return [select.defaultPrevented, menu.defaultPrevented]
+      }, pointerType)
+    expect(await refused('touch')).toEqual([true, true])
+    expect(await refused('mouse')).toEqual([false, false])
+    await page.keyboard.press('l')
+    await expect(page.getByTestId('mode-switch')).toContainText('Lesen')
+    expect(await refused('touch')).toEqual([false, false])
+  })
+})
+
+test('EPUB: pinch-zoomed in, the lookup sheet shows completely and at normal size', async ({ page }) => {
+  await page.setInputFiles('[data-testid=book-input]', fixture('sample.epub'))
+  const frame = await bookFrame(page, 'splendid')
+  await clickWord(page, frame, 'splendid')
+  await expect(page.getByTestId('lookup-sheet')).toBeVisible()
+  const cdp = await page.context().newCDPSession(page)
+  await cdp.send('Emulation.setPageScaleFactor', { pageScaleFactor: 2 })
+  await expect.poll(() => page.evaluate(() => window.visualViewport?.scale)).toBe(2)
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const r = document.querySelector('[data-testid=lookup-sheet]')!.getBoundingClientRect()
+        const vv = window.visualViewport!
+        const inside =
+          r.left >= vv.offsetLeft - 1 &&
+          r.top >= vv.offsetTop - 1 &&
+          r.right <= vv.offsetLeft + vv.width + 1 &&
+          r.bottom <= vv.offsetTop + vv.height + 1
+        // on screen as wide as without zoom (380 px next to the book on a wide screen)
+        return { inside, width: Math.round(r.width * vv.scale) }
+      }),
+    )
+    .toEqual({ inside: true, width: 380 })
+  await cdp.send('Emulation.setPageScaleFactor', { pageScaleFactor: 1 })
+  await cdp.detach()
+})
+
 test('install button: appears when the browser offers installation and replays its dialog', async ({ page }) => {
   // Chrome's real beforeinstallprompt needs an installable, engaged page; a synthetic one behaves the same for the app
   const offerInstall = (outcome: 'accepted' | 'dismissed') =>
@@ -262,10 +373,6 @@ test('settings: "always" asks DeepL at once, for words and for sentences', async
   await expect(page.getByTestId('passage-translation')).toHaveText(`DE:${P2}`)
 })
 
-/** How many ranges the CSS highlight `name` has in the book frame (0 if none). */
-const highlightSize = (frame: Frame, name: string) =>
-  frame.evaluate(n => (CSS as unknown as { highlights: Map<string, Set<Range>> }).highlights.get(n)?.size ?? 0, name)
-
 test('EPUB: reader modes – read mode looks nothing up, marks are kept with color and note', async ({ page }) => {
   await page.setInputFiles('[data-testid=book-input]', fixture('sample.epub'))
   let frame = await bookFrame(page, 'splendid')
@@ -275,7 +382,7 @@ test('EPUB: reader modes – read mode looks nothing up, marks are kept with col
   // read mode: a tap on a word does not open the lookup
   await page.keyboard.press('l')
   await expect(modeSwitch).toContainText('Lesen')
-  await expect(page.getByTestId('mode-toast')).toContainText('Modus: 📖 Lesen')
+  await expect(page.getByTestId('reader-toast')).toContainText('Modus: 📖 Lesen')
   await clickWord(page, frame, 'splendid')
   await page.waitForTimeout(400)
   await expect(page.getByTestId('lookup-sheet')).toHaveCount(0)

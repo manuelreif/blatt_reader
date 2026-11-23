@@ -20,7 +20,7 @@ Ablenker) durch Claude per Copy-Paste. Setup, Deploy und Bedienung: siehe `READM
 ```bash
 npm run dev            # Vite-Dev-Server inkl. /api/translate (Key aus .env)
 npm run typecheck
-npm test               # Vitest, 145 Tests
+npm test               # Vitest, 154 Tests
 npm run e2e            # Playwright gegen Dev-Server (Port 5179), erzeugt Fixtures selbst
 npm run build && E2E_PREVIEW=1 npm run e2e   # gegen Produktions-Build (Port 4179), inkl. CSP- und Passwort-Test
 npm run build:dict     # Ding laden (.cache/) → public/dict/en-de/*.json
@@ -69,7 +69,16 @@ Vor jedem Commit: `npm run typecheck && npm test && npm run e2e`.
   (`passageFromSelection` in `selection.ts`, Kontext = bis 800 Zeichen davor/danach) und öffnet
   `src/lookup/PassageSheet.tsx`: DeepL auf Knopfdruck (bei `always` sofort), max. 1500 Zeichen (Server-Grenze),
   nichts in die Vokabeln. „Markieren“ speichert die Auswahl als Markierung mit der Übersetzung als Notiz
-  (`saveMark(…, note)` in `ReaderView.tsx`). Die Auswahl bleibt stehen, solange das Popup offen ist (Griffe ziehen).
+  (`saveMark(…, note)` in `ReaderView.tsx`). Mit der Maus bleibt die native Auswahl stehen, solange das Popup offen
+  ist; am Touch-Gerät gibt es keine native Auswahl (siehe Reader-Modi).
+- **Rückmeldung beim Speichern:** `LookupSheet` ersetzt „Speichern“ durch das grüne Abzeichen „✓ Gespeichert“
+  (`saved-state`) und meldet Speichern/Ignorieren per Knopf über `onSaved` an den Toast des Readers
+  (`reader-toast`); Auto-Speichern toastet absichtlich nicht. Fehler beim Speichern stehen im Popup.
+- **Popups beim Zoomen:** Alle Sheets und der Toast des Readers liegen in `.overlay-layer`, das per
+  `--vv-*`-Variablen (`trackVisualViewport` in `src/util/visualViewport.ts`) genau den sichtbaren Ausschnitt
+  (Visual Viewport) abdeckt und mit `scale(1 / --vv-scale)` die Pinch-Zoom-Vergrößerung aufhebt. `.sheet` ist darum
+  `position: absolute` (nicht `fixed`) mit Höhen in `%`. Nebeneffekt: Die Android-Tastatur (verkleinert seit
+  Chrome 108 nur den Visual Viewport) verdeckt das Popup nicht. Neue Sheets im Reader in diese Ebene legen.
 - **Grundform:** `src/nlp/lemmatize.ts` mit compromise, **asynchron** (compromise wird erst beim ersten
   Nachschlagen geladen, spart ~340 kB beim Start).
 - **DeepL:** Browser → `/api/translate` → `server/translate.ts` → DeepL. Derselbe Handler läuft als
@@ -109,6 +118,15 @@ Vor jedem Commit: `npm run typecheck && npm test && npm run e2e`.
   `LOCAL_SETTING_KEYS`, also pro Gerät). `attachReaderHandlers` in `selection.ts` verteilt Tippen/Auswahl nach Modus;
   Zwei-Finger-Tipp über den reinen `createGestureTracker` (Taps der beteiligten Finger werden verworfen).
   Lesemodus blättert per Drittel (`tapZone`, x über `frameElement` in Fensterkoordinaten umgerechnet).
+  **Eigene Touch-Auswahl:** Nach einem Finger-`pointerdown` lehnt `attachReaderHandlers` außerhalb des Lesemodus
+  `selectstart` und `contextmenu` ab (keine native Auswahl, also keine Griffe, kein Android-Menü mit „Websuche“,
+  kein Chrome „Touch to Search“). Stattdessen: Wort 450 ms gedrückt halten (`LONG_PRESS_MS`, Automat
+  `createPressTracker`), dann ziehen; `extendSelection` erweitert wortweise im Sektionstext, gezeichnet mit dem
+  Highlight `vr-lookup`. Der `touchmove`-Listener sitzt in der Capture-Phase am Fenster des Buchs und stoppt das
+  Ereignis, sonst blättert foliates Paginator mit. Loslassen → `hitFromRange` bzw. `passageFromRange` bzw.
+  `onMarkSelection(span)`. Maus, programmatische Auswahl und Lesemodus behalten die native Auswahl.
+  Welcher Bereich gerade `vr-lookup` trägt (Wort, Passage, wartende Markierung), setzt ein Effekt in
+  `ReaderView` aus dem Zustand, nicht die einzelnen Handler.
 - **Markierungen** (`src/reader/highlights.ts`, Tabelle `highlights`): verankert über Offsets im Text von
   `buildBlockText(doc.body)` der Sektion (PDF: Seite) plus `text`; passt der Text nicht mehr, gilt das nächste
   Vorkommen. `cfi` nur zum Hinspringen. Gezeichnet mit der CSS Custom Highlight API (`vr-hl-<farbe>`,
@@ -163,6 +181,10 @@ Vor jedem Commit: `npm run typecheck && npm test && npm run e2e`.
   Neue externe Quellen (z. B. eine Live-KI) brauchen einen passenden `connect-src`-Eintrag.
 - PDFs werden absichtlich einseitig angezeigt (`rendition.spread = 'none'` in `ReaderView.tsx`).
 - `Intl.Segmenter` beendet Sätze an jedem `\n`; `findSentence` ersetzt Zeilenumbrüche vorher durch Leerzeichen.
+- **Chrome „Touch to Search“** (Google-Leiste unten, beim ersten Mal mit Frage) hängt an jeder nativen
+  Textauswahl auf Android; eine Seite kann es nicht abschalten, nur keine native Auswahl entstehen lassen
+  (darum die eigene Touch-Auswahl). Headless-Chromium wählt bei CDP-Touch-Gedrückthalten gar nicht aus; der
+  E2E-Test schickt `selectstart`/`contextmenu` deshalb direkt und prüft `defaultPrevented`.
 - Unit-Tests laufen in `node`; DOM-Tests brauchen `// @vitest-environment jsdom` am Dateianfang,
   DB-Tests `fake-indexeddb/auto`.
 - Playwright-Browser einmalig: `npx playwright install chromium`.
@@ -233,6 +255,10 @@ Login-Bremse (5 Fehlversuche pro Stunde und IP).
 **Neu (23.11.2026):** Eigener DeepL-Key pro Gerät (Einstellungen → Übersetzung), damit Mitnutzer auf ihr
 eigenes Kontingent übersetzen; optional erzwingbar mit `DEEPL_REQUIRE_OWN_KEY`.
 
+**Neu (23.11.2026):** Aus dem ersten Handytest: Am Touch-Gerät eigene Auswahl per Gedrückthalten + Ziehen statt der
+nativen (die Chromes Google-Leiste „Touch to Search“ auslöste), deutliche Rückmeldung beim Speichern (grünes
+„✓ Gespeichert“ + Toast), Popups bleiben beim Hineinzoomen ganz sichtbar.
+
 **Als Nächstes (geplant ab 23.11.2026): Praxistest auf Android**, in Chrome die Live-Adresse (`CLAUDE.local.md`)
 öffnen, anmelden, Menü → „App installieren“, dann in der installierten App:
 - [ ] Nach dem Anmelden erscheint „App installieren“ (leere Bibliothek bzw. Einstellungen → App) und öffnet
@@ -240,11 +266,15 @@ eigenes Kontingent übersetzen; optional erzwingbar mit `DEEPL_REQUIRE_OWN_KEY`.
 - [ ] Icon und Start ohne Browserleiste; Anmeldung bleibt nach Neustart erhalten
 - [ ] Buch importieren (vom Gerät und über Drive)
 - [ ] Wort antippen: Popup passt auf den Bildschirm, Wörterbuch sofort, „+ DeepL“, speichern, Quizrunde
-- [ ] Satz per Auswahl-Griffen markieren (Übersetzen-Modus): Satz-Popup, „+ Mit DeepL übersetzen“, „Markieren“
+- [ ] Übersetzen-Modus: Wort gedrückt halten → keine Google-Leiste, kein Menü „Kopieren/Websuche“; weiterziehen
+      wählt mehrere Wörter, ein ganzer Satz öffnet das Satz-Popup, „+ Mit DeepL übersetzen“, „Markieren“
+- [ ] „Speichern“ zeigt den grünen Haken „✓ Gespeichert“ und oben den Toast
+- [ ] Hineingezoomt (zwei Finger): Popup erscheint ganz und in normaler Größe; Tastatur im Übersetzungsfeld
+      verdeckt das Popup nicht
 - [ ] Reader-Leiste läuft nicht über den Rand
 - [ ] Lesemodus: Blättern per Tippen links/rechts
 - [ ] Zwei-Finger-Tipp wechselt den Modus
-- [ ] Markieren mit den Auswahl-Griffen, Farbe, Notiz
+- [ ] Markieren-Modus: gedrückt halten und ziehen, Farbe, Notiz (ebenfalls ohne Google-Leiste)
 - [ ] Einstellungen → Wörterbuch offline speichern, „dauerhafter Speicher“ ansehen
 - [ ] Flugmodus: App startet, Buch lesbar, Nachschlagen nur Wörterbuch mit Hinweis, Wort speichern;
       wieder online → DeepL wird nachgeholt
@@ -258,8 +288,11 @@ Gefundene Fehler hier ergänzen, erledigte Punkte nach oben in den Stand überne
 - Google Drive mit echtem Google: Login-Popup in der installierten Android-PWA, Verhalten nach mehr als
   1 h, ob `alt=media`-Downloads auf eine andere Domain umleiten (dann in die CSP `connect-src`), ob Google im
   Status „Testen“ alle 7 Tage neu fragt
-- Zwei-Finger-Tipp und Markieren per Auswahl-Griffen auf einem echten Android-Tablet (nur Unit-Test des
-  Gesten-Automaten bzw. Desktop-Chrome)
+- Zwei-Finger-Tipp und die eigene Touch-Auswahl (Gedrückthalten + Ziehen, abgelehntes `selectstart`) auf einem
+  echten Android-Gerät (nur Unit-Tests der Automaten, CDP-Touch in Headless-Chromium). Taucht die Google-Leiste
+  trotzdem auf: beim Ziehen zusätzlich `user-select: none` am Buchdokument; kommt sie schon beim bloßen Tippen,
+  `touchend` von Taps im Übersetzen-Modus abfangen.
+- Popups im gezoomten Zustand auf dem Handy (nur `Emulation.setPageScaleFactor` im E2E-Test)
 - echter Copy-Paste-Durchgang mit claude.ai
 - echtes zweispaltiges PDF-Paper (Phase-0-Entscheidung: foliate-js-PDF reicht vorerst; Ausweg wäre
   `pdfjs-dist` hinter einem Reader-Adapter)

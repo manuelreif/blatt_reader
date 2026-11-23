@@ -92,3 +92,70 @@ export function createGestureTracker() {
     },
   }
 }
+
+/** how long a finger rests on a word before the own touch selection starts */
+export const LONG_PRESS_MS = 450
+/** a finger moving further than this before LONG_PRESS_MS swipes or scrolls instead */
+const PRESS_MOVE = 10
+
+export type PressStep =
+  /** one finger went down: start the LONG_PRESS_MS timer, then call fire() */
+  | { kind: 'press' }
+  /** the press or the running selection is off (moved too early, another finger, touchcancel) */
+  | { kind: 'cancel' }
+  /** the selecting finger moved */
+  | { kind: 'drag'; x: number; y: number }
+  /** the selecting finger lifted */
+  | { kind: 'done'; x: number; y: number }
+
+/**
+ * Press and hold, then drag (the own text selection on touch screens, which replaces the native
+ * one with its handles and Chrome's "Touch to Search"). Pure like createGestureTracker: the
+ * caller runs the timer and calls fire() when it expires.
+ */
+export function createPressTracker() {
+  let state: 'idle' | 'pending' | 'active' = 'idle'
+  let id = -1
+  let origin = { x: 0, y: 0 }
+  const mine = (s: TouchSample) => s.points.find(p => p.id === id)
+  const stop = (): PressStep | null => {
+    const was = state
+    state = 'idle'
+    return was === 'idle' ? null : { kind: 'cancel' }
+  }
+
+  return {
+    start(s: TouchSample): PressStep | null {
+      if (s.touches !== 1 || s.points.length !== 1) return stop()
+      const p = s.points[0]
+      state = 'pending'
+      id = p.id
+      origin = { x: p.x, y: p.y }
+      return { kind: 'press' }
+    },
+    /** the timer expired: the selection starts at the returned point (null if the press is off) */
+    fire(): { x: number; y: number } | null {
+      if (state !== 'pending') return null
+      state = 'active'
+      return origin
+    },
+    move(s: TouchSample): PressStep | null {
+      const p = mine(s)
+      if (!p || state === 'idle') return null
+      if (state === 'active') return { kind: 'drag', x: p.x, y: p.y }
+      return Math.hypot(p.x - origin.x, p.y - origin.y) > PRESS_MOVE ? stop() : null
+    },
+    end(s: TouchSample): PressStep | null {
+      const p = mine(s)
+      if (!p || state === 'idle') return null
+      if (state === 'pending') return stop()
+      state = 'idle'
+      return { kind: 'done', x: p.x, y: p.y }
+    },
+    /** touchcancel, or the selection could not start */
+    cancel: stop,
+    get active() {
+      return state === 'active'
+    },
+  }
+}

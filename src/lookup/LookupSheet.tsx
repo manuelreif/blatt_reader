@@ -35,10 +35,13 @@ export function LookupSheet({
   target,
   book,
   onClose,
+  onSaved,
 }: {
   target: LookupTarget
   book: { id: string; title: string }
   onClose: () => void
+  /** a save or ignore by button (not auto-save) worked: a short message for the reader */
+  onSaved?: (message: string) => void
 }) {
   const settings = useSettings()
   const [dict, setDict] = useState<DictResult | null>(null)
@@ -46,6 +49,7 @@ export function LookupSheet({
   const [translation, setTranslation] = useState('')
   const [edited, setEdited] = useState(false)
   const [saved, setSaved] = useState<SavedState>(null)
+  const [saveError, setSaveError] = useState('')
   const autoSaved = useRef(false)
   /** what was saved for this lookup, so a DeepL answer arriving later can follow */
   const savedWith = useRef<{ termId: string; sentence: string; translation: string } | null>(null)
@@ -74,6 +78,7 @@ export function LookupSheet({
     setDict(null)
     setDeepl({ state: 'checking' })
     setSaved(null)
+    setSaveError('')
     setEdited(false)
     autoSaved.current = false
     savedWith.current = null
@@ -123,24 +128,40 @@ export function LookupSheet({
     void applyContextTranslation(where, deepl.text)
   }, [deepl, edited, saved])
 
-  async function save(status?: number) {
-    if (!dict) return
-    const res = await saveLookup({
-      lemma: dict.lemma,
-      surface: target.surface,
-      sentence: target.sentence,
-      translation: translation.trim() || undefined,
-      deeplPending: deeplPending && status !== STATUS_IGNORED,
-      dictSenses: dict.senses,
-      pos: dict.pos,
-      book,
-      cfi: target.cfi,
-      cardTypes: settings.cardTypes,
-      status,
-    })
+  /** saves the word (or marks it ignored); false if that failed */
+  async function save(status?: number): Promise<boolean> {
+    if (!dict) return false
+    setSaveError('')
+    let res: Awaited<ReturnType<typeof saveLookup>>
+    try {
+      res = await saveLookup({
+        lemma: dict.lemma,
+        surface: target.surface,
+        sentence: target.sentence,
+        translation: translation.trim() || undefined,
+        deeplPending: deeplPending && status !== STATUS_IGNORED,
+        dictSenses: dict.senses,
+        pos: dict.pos,
+        book,
+        cfi: target.cfi,
+        cardTypes: settings.cardTypes,
+        status,
+      })
+    } catch (e) {
+      console.error(e)
+      setSaveError(`Speichern fehlgeschlagen: ${(e as Error).message || e}`)
+      return false
+    }
     if (status !== STATUS_IGNORED && (res.isNew || res.contextAdded))
       savedWith.current = { termId: res.term.id, sentence: target.sentence, translation: translation.trim() }
     setSaved(status === STATUS_IGNORED ? 'ignored' : res.isNew ? 'new' : res.contextAdded ? 'context' : 'exists')
+    return true
+  }
+
+  /** save or ignore by button: also tells the reader, which shows a toast */
+  async function saveByButton(status?: number) {
+    if (await save(status))
+      onSaved?.(status === STATUS_IGNORED ? `„${target.surface}“ wird ignoriert` : `✓ „${target.surface}“ gespeichert`)
   }
 
   useEffect(() => {
@@ -153,9 +174,9 @@ export function LookupSheet({
   }, [ready, settings.autoSave])
 
   const savedLabel: Record<Exclude<SavedState, null>, string> = {
-    new: '✓ Neu in deinen Vokabeln',
-    context: '✓ Neuer Kontext gespeichert',
-    exists: '✓ Schon gespeichert',
+    new: 'Neu in deinen Vokabeln',
+    context: 'Neuer Kontext gespeichert',
+    exists: 'Schon gespeichert',
     ignored: 'Wird künftig ignoriert',
   }
 
@@ -272,23 +293,37 @@ export function LookupSheet({
 
       <div className="sheet-actions">
         {saved ? (
-          <span className="ok">
-            {savedLabel[saved]} · <a href={href({ name: 'vocab', termId })}>ansehen</a>
-            {deeplPending && saved !== 'ignored' && saved !== 'exists' && (
-              <span className="muted" data-testid="deepl-pending">
-                {' '}
-                · DeepL wird nachgeholt, sobald es wieder erreichbar ist
-              </span>
-            )}
-          </span>
+          <>
+            <span
+              className={`saved-badge${saved === 'ignored' ? ' is-ignored' : ''}`}
+              role="status"
+              data-testid="saved-state"
+            >
+              {saved === 'ignored' ? 'Ignoriert' : '✓ Gespeichert'}
+            </span>
+            <span className="saved-info">
+              {savedLabel[saved]} · <a href={href({ name: 'vocab', termId })}>ansehen</a>
+              {deeplPending && saved !== 'ignored' && saved !== 'exists' && (
+                <span className="muted" data-testid="deepl-pending">
+                  {' '}
+                  · DeepL wird nachgeholt, sobald es wieder erreichbar ist
+                </span>
+              )}
+            </span>
+          </>
         ) : (
           <>
-            <button className="primary" disabled={!dict} onClick={() => void save()} data-testid="save-term">
+            <button className="primary" disabled={!dict} onClick={() => void saveByButton()} data-testid="save-term">
               {existing && existing.status !== STATUS_IGNORED ? 'Kontext speichern' : 'Speichern'}
             </button>
-            <button disabled={!dict} onClick={() => void save(STATUS_IGNORED)} title="z. B. Eigennamen">
+            <button disabled={!dict} onClick={() => void saveByButton(STATUS_IGNORED)} title="z. B. Eigennamen">
               Ignorieren
             </button>
+            {saveError && (
+              <span className="warn" role="alert">
+                {saveError}
+              </span>
+            )}
           </>
         )}
       </div>
