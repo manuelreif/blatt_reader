@@ -14,7 +14,7 @@ import {
 import { translateInContext, TranslateError } from '../translate/deepl'
 import { countPendingTranslations, retryPendingTranslations } from '../translate/pending'
 import { backupJson, download, restoreBackup, reviewLogCsv, vocabCsv } from '../vocab/export'
-import { setSetting, useSettings } from './settings'
+import { setSetting, useSettings, type DeeplMode } from './settings'
 
 const CARD_LABEL: Record<CardType, string> = {
   'en-de': 'Englisch → Deutsch',
@@ -194,7 +194,21 @@ export function SettingsView() {
       <p className="muted">
         DeepL läuft über <code>/api/translate</code> (lokal: Vite-Dev-Server mit <code>DEEPL_API_KEY</code> in <code>.env</code>;
         online: Cloudflare Pages Function). Das Wort geht als Text an DeepL, der Satz als Kontext; abgerechnet wird nur das Wort.
+        Markierst du im Übersetzen-Modus einen ganzen Satz oder mehr, wird dieser Text voll abgerechnet. Schon einmal
+        Übersetztes kommt immer kostenlos aus dem Cache.
       </p>
+      <label className="field">
+        <span className="label">DeepL abfragen</span>
+        <select
+          value={s.deeplMode}
+          onChange={e => void setSetting('deeplMode', e.target.value as DeeplMode)}
+          data-testid="deepl-mode"
+        >
+          <option value="manual">Nur auf Knopfdruck (+ DeepL), sonst nur das Wörterbuch</option>
+          <option value="fallback">Automatisch, wenn das Wörterbuch nichts findet (nur Wörter)</option>
+          <option value="always">Immer automatisch (Wörter und Sätze)</option>
+        </select>
+      </label>
       <label className="field">
         <span className="label">
           App-Token (nur nötig, wenn auf dem Server APP_TOKEN gesetzt ist; mit Passwortschutz überflüssig)

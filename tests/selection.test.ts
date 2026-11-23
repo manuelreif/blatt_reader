@@ -1,7 +1,15 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest'
 import { anchorIn } from '../src/reader/highlights'
-import { blockOf, buildBlockText, hitFromSelection, markFromSelection, offsetOf, rangeFromOffsets } from '../src/reader/selection'
+import {
+  blockOf,
+  buildBlockText,
+  hitFromSelection,
+  markFromSelection,
+  offsetOf,
+  passageFromSelection,
+  rangeFromOffsets,
+} from '../src/reader/selection'
 
 function setup(html: string) {
   document.body.innerHTML = html
@@ -100,6 +108,31 @@ describe('markFromSelection', () => {
     doc.getSelection()!.removeAllRanges()
     doc.getSelection()!.addRange(space)
     expect(markFromSelection(doc)).toBeNull()
+  })
+})
+
+describe('passageFromSelection', () => {
+  it('takes sentences across paragraphs as one text, with the text around them as context', () => {
+    const doc = setup(
+      '<p id="a">It was late. The river rose quickly that night.</p><p id="b">Nobody saw the bank go under. Morning came.</p>',
+    )
+    const a = doc.getElementById('a')!.firstChild!
+    const b = doc.getElementById('b')!.firstChild!
+    const range = doc.createRange()
+    range.setStart(a, 'It was late. The ri'.length) // inside "river"
+    range.setEnd(b, 'Nobody saw the bank go under.'.length)
+    doc.getSelection()!.removeAllRanges()
+    doc.getSelection()!.addRange(range)
+    const p = passageFromSelection(doc)!
+    expect(p.text).toBe('river rose quickly that night. Nobody saw the bank go under.')
+    expect(p.context).toBe('It was late. The … Morning came.')
+    expect(buildBlockText(doc.body).text.slice(p.span.start, p.span.end)).toBe(p.span.text)
+  })
+
+  it('returns null without a selection', () => {
+    const doc = setup('<p>alpha beta</p>')
+    doc.getSelection()!.removeAllRanges()
+    expect(passageFromSelection(doc)).toBeNull()
   })
 })
 

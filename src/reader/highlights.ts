@@ -8,7 +8,8 @@ import { buildBlockText, rangeContainsPoint, rangeFromOffsets } from './selectio
 
 const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 10)
 
-export type NewHighlight = Pick<Highlight, 'bookId' | 'bookTitle' | 'section' | 'start' | 'end' | 'text' | 'cfi' | 'color'>
+export type NewHighlight = Pick<Highlight, 'bookId' | 'bookTitle' | 'section' | 'start' | 'end' | 'text' | 'cfi' | 'color'> &
+  Partial<Pick<Highlight, 'note'>>
 
 export async function addHighlight(fields: NewHighlight): Promise<Highlight> {
   const now = Date.now()

@@ -1,6 +1,7 @@
 // Words saved while DeepL was unreachable (offline, logged out, quota) get their
 // context translation later: on app start, when the device comes back online and
 // after the next successful lookup.
+import { applyContextTranslation } from '../db/repo'
 import { db } from '../db/schema'
 import { translateInContext } from './deepl'
 
@@ -34,15 +35,7 @@ async function run(fetchImpl?: typeof fetch): Promise<RetryResult> {
     } catch (e) {
       return { done, failed: (e as Error).message }
     }
-    await db.transaction('rw', db.contexts, db.terms, async () => {
-      const fresh = await db.contexts.get(ctx.id!)
-      if (!fresh?.deeplPending) return
-      const term = await db.terms.get(fresh.termId)
-      // replace the word's translation only while it is still the fallback saved with this context
-      if (term && term.translation === (fresh.translation ?? ''))
-        await db.terms.update(term.id, { translation, updatedAt: Date.now() })
-      await db.contexts.update(fresh.id!, { translation, deeplPending: undefined })
-    })
+    await applyContextTranslation({ id: ctx.id! }, translation, { onlyIfPending: true })
     done++
   }
   return { done }

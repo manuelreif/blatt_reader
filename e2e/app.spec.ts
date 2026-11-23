@@ -8,9 +8,14 @@ const fixture = (name: string) => fileURLToPath(new URL(`./fixtures/generated/${
 
 const TRANSLATIONS: Record<string, string> = { estimator: 'Schätzer', statistical: 'statistisch', bank: 'Ufer' }
 
+/** requests the DeepL mock answered in the current test */
+let deeplRequests: { text: string; context?: string }[] = []
+
 async function mockDeepl(page: Page) {
+  deeplRequests = []
   await page.route('**/api/translate', async route => {
-    const { text } = route.request().postDataJSON() as { text: string }
+    const { text, context } = route.request().postDataJSON() as { text: string; context?: string }
+    deeplRequests.push({ text, context })
     await route.fulfill({ json: { translation: TRANSLATIONS[text] ?? `DE:${text}`, billedCharacters: text.length } })
   })
 }
@@ -75,7 +80,14 @@ test('EPUB: tap a word, save it, enrich it with a pasted answer and review it', 
   await expect(sheet).toContainText('estimator')
   await expect(sheet).toContainText('The unbiased estimator was surprisingly reliable.')
   await expect(sheet).toContainText('Schätzfunktion') // offline dictionary (Ding)
+  // the dictionary comes first, DeepL only on request
+  await expect(page.getByTestId('deepl-request')).toBeVisible()
+  await expect(page.getByTestId('translation-input')).toHaveValue(/Kalkulationsingenieur/) // Ding's first sense
+  await expect(sheet).toContainText('Übersetzung (Wörterbuch)')
+  expect(deeplRequests).toEqual([])
+  await page.getByTestId('deepl-request').click()
   await expect(page.getByTestId('translation-input')).toHaveValue('Schätzer')
+  expect(deeplRequests).toEqual([{ text: 'estimator', context: 'The unbiased estimator was surprisingly reliable.' }])
   await page.getByTestId('save-term').click()
   await expect(sheet).toContainText('Neu in deinen Vokabeln')
 
@@ -149,6 +161,60 @@ test('EPUB: selecting a phrase looks up the phrase', async ({ page }) => {
   const sheet = page.getByTestId('lookup-sheet')
   await expect(sheet).toContainText('gave up')
   await expect(sheet).toContainText('Grundform: give up')
+})
+
+/** Selects the whole paragraph `id` in the book frame, as dragging the selection handles would. */
+const selectParagraph = (frame: Frame, id: string) =>
+  frame.evaluate(pid => {
+    const r = document.createRange()
+    r.selectNodeContents(document.getElementById(pid)!)
+    document.getSelection()!.removeAllRanges()
+    document.getSelection()!.addRange(r)
+  }, id)
+
+const P2 = 'Every estimator has a variance. The unbiased estimator was surprisingly reliable.'
+
+test('EPUB: selecting sentences translates them on request and keeps the translation as a mark note', async ({ page }) => {
+  await page.setInputFiles('[data-testid=book-input]', fixture('sample.epub'))
+  const frame = await bookFrame(page, 'unbiased estimator')
+  await selectParagraph(frame, 'p2')
+  const sheet = page.getByTestId('passage-sheet')
+  await expect(sheet).toContainText(P2)
+  await expect(page.getByTestId('lookup-sheet')).toHaveCount(0)
+  await expect(page.getByTestId('passage-deepl')).toBeVisible()
+  expect(deeplRequests).toEqual([])
+
+  await page.getByTestId('passage-deepl').click()
+  await expect(page.getByTestId('passage-translation')).toHaveText(`DE:${P2}`)
+  expect(deeplRequests).toHaveLength(1)
+  expect(deeplRequests[0].text).toBe(P2)
+  expect(deeplRequests[0].context).toContain('splendid') // the text before goes along as context
+
+  await expect(page.getByTestId('passage-mark')).toHaveText('Markieren mit Übersetzung als Notiz')
+  await page.getByTestId('passage-mark').click()
+  await expect(page.getByTestId('mark-sheet')).toBeVisible()
+  await expect(page.getByTestId('mark-note')).toHaveValue(`DE:${P2}`)
+  await expect.poll(() => highlightSize(frame, 'vr-hl-yellow')).toBe(1)
+  await expect.poll(() => highlightSize(frame, 'vr-hl-note')).toBe(1)
+
+  // nothing went into the vocabulary
+  await page.goto('/#/vocab')
+  await expect(page.getByText('Noch keine Vokabeln')).toBeVisible()
+})
+
+test('settings: "always" asks DeepL at once, for words and for sentences', async ({ page }) => {
+  await page.goto('/#/settings')
+  await page.getByTestId('deepl-mode').selectOption('always')
+  await page.goto('/#/')
+  await page.setInputFiles('[data-testid=book-input]', fixture('sample.epub'))
+  const frame = await bookFrame(page, 'unbiased estimator')
+  await clickWord(page, frame, 'estimator', 1)
+  await expect(page.getByTestId('translation-input')).toHaveValue('Schätzer')
+  await expect(page.getByTestId('deepl-request')).toHaveCount(0)
+
+  await page.keyboard.press('Escape')
+  await selectParagraph(frame, 'p2')
+  await expect(page.getByTestId('passage-translation')).toHaveText(`DE:${P2}`)
 })
 
 /** How many ranges the CSS highlight `name` has in the book frame (0 if none). */
@@ -236,6 +302,7 @@ test('PDF: a word hyphenated across lines is joined', async ({ page }) => {
   const sheet = page.getByTestId('lookup-sheet')
   await expect(sheet).toContainText('statistical')
   await expect(sheet).toContainText('We fit a statistical model to the survey data.')
+  await page.getByTestId('deepl-request').click()
   await expect(page.getByTestId('translation-input')).toHaveValue('statistisch')
 })
 
@@ -294,6 +361,7 @@ test.describe('offline (no service worker, so page.route sees every request)', (
     const frame = await bookFrame(page, 'unbiased estimator')
     await clickWord(page, frame, 'estimator', 1)
     const sheet = page.getByTestId('lookup-sheet')
+    await page.getByTestId('deepl-request').click()
     await expect(sheet).toContainText('Keine Verbindung')
     await expect(page.getByTestId('translation-input')).not.toHaveValue('') // dictionary fallback
     await page.getByTestId('save-term').click()
@@ -414,6 +482,7 @@ test.describe('Google Drive (Google replaced by a stub)', () => {
     await page.locator('.book-open').click()
     const frame = await bookFrame(page, 'unbiased estimator')
     await clickWord(page, frame, 'estimator', 1)
+    await page.getByTestId('deepl-request').click()
     await expect(page.getByTestId('translation-input')).toHaveValue('Schätzer')
     await page.getByTestId('save-term').click()
     await expect(page.getByTestId('lookup-sheet')).toContainText('Neu in deinen Vokabeln')

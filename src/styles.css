@@ -815,6 +815,39 @@ h2 {
   font-weight: 600;
 }
 
+.translation-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.25em;
+}
+
+.translation-head .label {
+  margin-bottom: 0;
+}
+
+.deepl-button {
+  flex: none;
+  font-size: 0.85rem;
+  padding: 0.2rem 0.65rem;
+}
+
+.passage-translation {
+  font-size: 1.05rem;
+  line-height: 1.45;
+  margin: 0.1rem 0 0.7rem;
+  overflow-wrap: anywhere;
+}
+
+.passage-deepl {
+  margin: 0.3rem 0 0.2rem;
+}
+
+.passage-sheet .sheet-actions {
+  flex-wrap: wrap;
+}
+
 .sheet .context {
   font-style: italic;
   margin: 0.6rem 0;

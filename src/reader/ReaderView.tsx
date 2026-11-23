@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Emblem } from '../brand/Logo'
 import { db, type Book, type Highlight, type HighlightColor } from '../db/schema'
 import { LookupSheet } from '../lookup/LookupSheet'
+import { PassageSheet } from '../lookup/PassageSheet'
 import type { LookupTarget } from '../lookup/lookupService'
 import { href } from '../router'
 import { getSettings, setSetting, useSettings } from '../settings/settings'
@@ -20,6 +21,7 @@ import {
   prepareDocument,
   type LookupHit,
   type MarkSpan,
+  type PassageHit,
 } from './selection'
 
 const bookCSS = (fontScale: number) => `
@@ -40,6 +42,8 @@ const bookCSS = (fontScale: number) => `
 `
 
 type ActiveHit = LookupTarget & { doc: Document; range: Range }
+/** a selection too long to look up, shown in the passage sheet */
+type ActivePassage = PassageHit & { doc: Document; index: number }
 
 /** the mark sheet: a selection waiting for a color, or a saved mark */
 type MarkSheet = { kind: 'pending'; doc: Document; index: number; span: MarkSpan } | { kind: 'saved'; id: string }
@@ -56,6 +60,8 @@ export function ReaderView({ bookId, cfi }: { bookId: string; cfi?: string }) {
   const [zoom, setZoom] = useState<'fit-page' | 'fit-width'>('fit-page')
   const [hit, setHit] = useState<ActiveHit | null>(null)
   const hitRef = useRef<ActiveHit | null>(null)
+  const [passage, setPassage] = useState<ActivePassage | null>(null)
+  const passageRef = useRef<ActivePassage | null>(null)
   const [markSheet, setMarkSheet] = useState<MarkSheet | null>(null)
   const [listOpen, setListOpen] = useState(false)
   const [toast, setToast] = useState('')
@@ -68,7 +74,9 @@ export function ReaderView({ bookId, cfi }: { bookId: string; cfi?: string }) {
   /** loaded book documents and their section index (the PDF renderer does not tell the index) */
   const docs = useRef(new Map<Document, number>())
   // set up once the book opens, used by the sheets
-  const saveMarkRef = useRef<((doc: Document, index: number, span: MarkSpan, color?: HighlightColor) => Promise<void>) | null>(null)
+  const saveMarkRef = useRef<
+    ((doc: Document, index: number, span: MarkSpan, color?: HighlightColor, note?: string) => Promise<void>) | null
+  >(null)
   const lookupRef = useRef<((doc: Document, index: number, h: LookupHit) => void) | null>(null)
 
   function paint(doc: Document, index: number) {
@@ -105,14 +113,15 @@ export function ReaderView({ bookId, cfi }: { bookId: string; cfi?: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [highlights])
 
+  /** closes the word sheet and the passage sheet */
   function closeLookup() {
     const current = hitRef.current
-    if (current) {
-      markRange(current.doc, null)
-      current.doc.getSelection()?.removeAllRanges()
-    }
+    if (current) markRange(current.doc, null)
+    ;(current?.doc ?? passageRef.current?.doc)?.getSelection()?.removeAllRanges()
     hitRef.current = null
+    passageRef.current = null
     setHit(null)
+    setPassage(null)
   }
 
   useEffect(() => {
@@ -142,7 +151,7 @@ export function ReaderView({ bookId, cfi }: { bookId: string; cfi?: string }) {
       }
     }
 
-    async function saveMark(doc: Document, index: number, span: MarkSpan, color?: HighlightColor) {
+    async function saveMark(doc: Document, index: number, span: MarkSpan, color?: HighlightColor, note?: string) {
       const b = await db.books.get(bookId)
       const h = await addHighlight({
         bookId,
@@ -153,6 +162,7 @@ export function ReaderView({ bookId, cfi }: { bookId: string; cfi?: string }) {
         text: span.text,
         cfi: cfiOf(index, span.range),
         color: color ?? (await getSettings()).highlightColor,
+        ...(note?.trim() ? { note: note.trim() } : {}),
       })
       doc.getSelection()?.removeAllRanges()
       setMarkSheet({ kind: 'saved', id: h.id })
@@ -181,9 +191,25 @@ export function ReaderView({ bookId, cfi }: { bookId: string; cfi?: string }) {
       const next: ActiveHit = { surface: h.surface, sentence: h.sentence, cfi: location, doc, range: h.range }
       hitRef.current = next
       setHit(next)
+      passageRef.current = null
+      setPassage(null)
       setMarkSheet(null)
     }
     lookupRef.current = onHit
+
+    // the selection stays: its handles can still be dragged while the sheet is open
+    const onPassage = (doc: Document, index: number, p: PassageHit) => {
+      const prev = passageRef.current
+      if (prev && prev.doc === doc && prev.text === p.text) return
+      const word = hitRef.current
+      if (word) markRange(word.doc, null)
+      hitRef.current = null
+      setHit(null)
+      const next: ActivePassage = { ...p, doc, index }
+      passageRef.current = next
+      setPassage(next)
+      setMarkSheet(null)
+    }
 
     ;(async () => {
       try {
@@ -214,6 +240,7 @@ export function ReaderView({ bookId, cfi }: { bookId: string; cfi?: string }) {
           attachReaderHandlers(doc, {
             mode: () => modeRef.current,
             onLookup: h => onHit(doc, index, h),
+            onPassage: p => onPassage(doc, index, p),
             onMarkWord: h => {
               closeLookup()
               const span = markFromRange(doc, h.range)
@@ -314,6 +341,15 @@ export function ReaderView({ bookId, cfi }: { bookId: string; cfi?: string }) {
     void saveMarkRef.current?.(markSheet.doc, markSheet.index, span, color)
   }
 
+  /** saves the passage as a mark, its translation (if any) as the note */
+  function markPassage(note?: string) {
+    const p = passageRef.current
+    if (!p) return
+    passageRef.current = null
+    setPassage(null)
+    void saveMarkRef.current?.(p.doc, p.index, p.span, undefined, note)
+  }
+
   function lookupMarked() {
     const sheet = markSheet
     setMarkSheet(null)
@@ -336,7 +372,7 @@ export function ReaderView({ bookId, cfi }: { bookId: string; cfi?: string }) {
   }
 
   return (
-    <div className={`reader mode-${mode} ${hit || markSheet || listOpen ? 'with-sheet' : ''}`}>
+    <div className={`reader mode-${mode} ${hit || passage || markSheet || listOpen ? 'with-sheet' : ''}`}>
       <header className="reader-bar">
         <a className="reader-home" href={href({ name: 'library' })} title="Zur Bibliothek" aria-label="Zur Bibliothek">
           <span aria-hidden>‹</span>
@@ -447,7 +483,8 @@ export function ReaderView({ bookId, cfi }: { bookId: string; cfi?: string }) {
       </footer>
 
       {hit && book && <LookupSheet target={hit} book={{ id: book.id, title: book.title }} onClose={closeLookup} />}
-      {!hit && markSheet && (
+      {passage && <PassageSheet text={passage.text} context={passage.context} onMark={markPassage} onClose={closeLookup} />}
+      {!hit && !passage && markSheet && (
         <HighlightSheet
           id={markSheet.kind === 'saved' ? markSheet.id : undefined}
           pendingText={markSheet.kind === 'pending' ? markSheet.span.text : undefined}
@@ -459,7 +496,7 @@ export function ReaderView({ bookId, cfi }: { bookId: string; cfi?: string }) {
           }}
         />
       )}
-      {!hit && !markSheet && listOpen && (
+      {!hit && !passage && !markSheet && listOpen && (
         <HighlightList
           list={highlights ?? []}
           onPick={h => {

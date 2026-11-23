@@ -2,7 +2,7 @@ import 'fake-indexeddb/auto'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '../src/db/schema'
 import { setSetting } from '../src/settings/settings'
-import { TranslateError, translateInContext } from '../src/translate/deepl'
+import { cachedTranslation, TranslateError, translateInContext } from '../src/translate/deepl'
 
 beforeEach(async () => {
   await Promise.all(db.tables.map(t => t.clear()))
@@ -24,5 +24,16 @@ describe('translateInContext', () => {
   it('turns server errors into readable messages', async () => {
     const f = vi.fn(async () => Response.json({ error: 'DeepL-Key ungültig' }, { status: 502 }))
     await expect(translateInContext('bank', '', { fetchImpl: f })).rejects.toThrow(new TranslateError('DeepL-Key ungültig'))
+  })
+})
+
+describe('cachedTranslation', () => {
+  it('only reads the cache of earlier translations', async () => {
+    expect(await cachedTranslation('bank', 'the bank of the river')).toBeNull()
+    const f = vi.fn(async () => Response.json({ translation: 'Ufer' }))
+    await translateInContext('bank', 'the bank of the river', { fetchImpl: f })
+    expect(await cachedTranslation('bank', 'the bank of the river')).toBe('Ufer')
+    expect(await cachedTranslation('bank', 'a bank account')).toBeNull()
+    expect(f).toHaveBeenCalledTimes(1)
   })
 })

@@ -100,6 +100,35 @@ export async function saveLookup(input: SaveLookupInput): Promise<SaveLookupResu
   })
 }
 
+/**
+ * Stores a DeepL translation for a saved context. The word's own translation follows only
+ * while it is still the one saved with that context (the dictionary fallback), never over a
+ * translation the user typed later. Returns false if the context is gone or, with
+ * `onlyIfPending`, no longer waiting for DeepL.
+ */
+export async function applyContextTranslation(
+  where: { id: number } | { termId: string; sentence: string },
+  translation: string,
+  opts: { onlyIfPending?: boolean } = {},
+): Promise<boolean> {
+  return db.transaction('rw', db.contexts, db.terms, async () => {
+    const ctx =
+      'id' in where
+        ? await db.contexts.get(where.id)
+        : await db.contexts
+            .where('termId')
+            .equals(where.termId)
+            .filter(c => c.sentence === where.sentence.trim())
+            .first()
+    if (!ctx || (opts.onlyIfPending && !ctx.deeplPending)) return false
+    const term = await db.terms.get(ctx.termId)
+    if (term && term.translation === (ctx.translation ?? ''))
+      await db.terms.update(term.id, { translation, updatedAt: Date.now() })
+    await db.contexts.update(ctx.id!, { translation, deeplPending: undefined })
+    return true
+  })
+}
+
 export async function ensureCards(termId: string, types: CardType[], now = new Date()) {
   for (const type of types) {
     const cardId = `${termId}|${type}`

@@ -1,6 +1,7 @@
 import 'fake-indexeddb/auto'
 import { beforeEach, describe, expect, it } from 'vitest'
 import {
+  applyContextTranslation,
   booksWithWords,
   countDue,
   deleteTerm,
@@ -65,6 +66,33 @@ describe('saveLookup', () => {
   it('falls back to the dictionary when DeepL gave nothing', async () => {
     await saveLookup({ ...base, translation: undefined })
     expect((await db.terms.get('estimator'))?.translation).toBe('Schätzfunktion {f} [statist.]')
+  })
+})
+
+describe('applyContextTranslation', () => {
+  const fromDictionary = { ...base, translation: 'Schätzfunktion', dictSenses: [{ de: 'Schätzfunktion {f}' }] }
+
+  it('replaces the dictionary fallback saved with the context', async () => {
+    await saveLookup(fromDictionary)
+    expect(await applyContextTranslation({ termId: 'estimator', sentence: base.sentence }, 'Schätzer')).toBe(true)
+    expect((await db.terms.get('estimator'))?.translation).toBe('Schätzer')
+    expect((await db.contexts.where('termId').equals('estimator').first())?.translation).toBe('Schätzer')
+  })
+
+  it('keeps a translation typed later, and ignores unknown contexts', async () => {
+    await saveLookup(fromDictionary)
+    await db.terms.update('estimator', { translation: 'Schätzwert' })
+    await applyContextTranslation({ termId: 'estimator', sentence: base.sentence }, 'Schätzer')
+    expect((await db.terms.get('estimator'))?.translation).toBe('Schätzwert')
+    expect((await db.contexts.where('termId').equals('estimator').first())?.translation).toBe('Schätzer')
+    expect(await applyContextTranslation({ termId: 'estimator', sentence: 'Another sentence.' }, 'x')).toBe(false)
+  })
+
+  it('with onlyIfPending, leaves contexts alone that wait for nothing', async () => {
+    await saveLookup(fromDictionary)
+    const ctx = (await db.contexts.where('termId').equals('estimator').first())!
+    expect(await applyContextTranslation({ id: ctx.id! }, 'Schätzer', { onlyIfPending: true })).toBe(false)
+    expect((await db.terms.get('estimator'))?.translation).toBe('Schätzfunktion')
   })
 })
 

@@ -1,17 +1,20 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useEffect, useRef, useState } from 'react'
-import { saveLookup, termKey } from '../db/repo'
+import { applyContextTranslation, saveLookup, termKey } from '../db/repo'
 import { db, STATUS_IGNORED } from '../db/schema'
 import { normalizeWord } from '../nlp/sentence'
 import { href } from '../router'
-import { useSettings } from '../settings/settings'
-import { translateInContext, type TranslateError } from '../translate/deepl'
+import { getSettings, useSettings } from '../settings/settings'
+import { cachedTranslation, translateInContext, type TranslateError } from '../translate/deepl'
 import { retryPendingTranslations } from '../translate/pending'
 import { Highlighted } from '../util/Highlighted'
 import { canSpeak, speak } from '../util/speech'
 import { lookupDictionary, plainSense, type DictResult, type LookupTarget } from './lookupService'
 
 type DeeplState =
+  /** looking into the translation cache and the setting */
+  | { state: 'checking' }
+  | { state: 'idle' }
   | { state: 'loading' }
   | { state: 'ok'; text: string; cached?: boolean }
   | { state: 'error'; message: string; login?: boolean }
@@ -39,34 +42,65 @@ export function LookupSheet({
 }) {
   const settings = useSettings()
   const [dict, setDict] = useState<DictResult | null>(null)
-  const [deepl, setDeepl] = useState<DeeplState>({ state: 'loading' })
+  const [deepl, setDeepl] = useState<DeeplState>({ state: 'checking' })
   const [translation, setTranslation] = useState('')
   const [edited, setEdited] = useState(false)
   const [saved, setSaved] = useState<SavedState>(null)
   const autoSaved = useRef(false)
+  /** what was saved for this lookup, so a DeepL answer arriving later can follow */
+  const savedWith = useRef<{ termId: string; sentence: string; translation: string } | null>(null)
+  /** the current lookup; answers for an earlier one are dropped */
+  const generation = useRef(0)
   const termId = dict ? termKey(dict.lemma) : ''
   const existing = useLiveQuery(() => (termId ? db.terms.get(termId) : undefined), [termId])
 
-  useEffect(() => {
-    let cancelled = false
-    setDict(null)
+  function requestDeepl() {
+    const gen = generation.current
     setDeepl({ state: 'loading' })
-    setSaved(null)
-    setEdited(false)
-    autoSaved.current = false
-    lookupDictionary(target)
-      .then(r => !cancelled && setDict(r))
-      .catch(() => !cancelled && setDict({ lemma: normalizeWord(target.surface).toLowerCase(), senses: [] }))
     translateInContext(target.surface, target.sentence)
       .then(r => {
-        if (!cancelled) setDeepl({ state: 'ok', text: r.translation, cached: r.cached })
+        if (gen === generation.current) setDeepl({ state: 'ok', text: r.translation, cached: r.cached })
         // DeepL is reachable again: catch up on words saved while it was not
         if (!r.cached) void retryPendingTranslations()
       })
-      .catch((e: TranslateError) => !cancelled && setDeepl({ state: 'error', message: e.message, login: e.login }))
+      .catch((e: TranslateError) => {
+        if (gen === generation.current) setDeepl({ state: 'error', message: e.message, login: e.login })
+      })
+  }
+
+  useEffect(() => {
+    const gen = ++generation.current
+    const current = () => gen === generation.current
+    setDict(null)
+    setDeepl({ state: 'checking' })
+    setSaved(null)
+    setEdited(false)
+    autoSaved.current = false
+    savedWith.current = null
+    const dictDone = lookupDictionary(target)
+      .catch((): DictResult => ({ lemma: normalizeWord(target.surface).toLowerCase(), senses: [] }))
+      .then(r => {
+        if (current()) setDict(r)
+        return r
+      })
+    // a translation paid for before shows at once; otherwise DeepL only as the setting says
+    // (read here, useSettings() may still hold the defaults right after mounting)
+    void (async () => {
+      const [cached, { deeplMode }] = await Promise.all([
+        cachedTranslation(target.surface, target.sentence).catch(() => null),
+        getSettings(),
+      ])
+      if (!current()) return
+      if (cached !== null) return setDeepl({ state: 'ok', text: cached, cached: true })
+      const ask = deeplMode === 'always' || (deeplMode === 'fallback' && (await dictDone).senses.length === 0)
+      if (!current()) return
+      if (ask) requestDeepl()
+      else setDeepl({ state: 'idle' })
+    })()
     return () => {
-      cancelled = true
+      generation.current++
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [target.surface, target.sentence])
 
   useEffect(() => {
@@ -76,10 +110,18 @@ export function LookupSheet({
     else setTranslation('')
   }, [deepl, dict, edited])
 
-  const ready = dict !== null && deepl.state !== 'loading'
+  const ready = dict !== null && deepl.state !== 'checking' && deepl.state !== 'loading'
 
-  // DeepL failed and the user kept the dictionary fallback: fetch DeepL later
+  // DeepL was asked, failed, and the user kept the dictionary fallback: fetch DeepL later
   const deeplPending = deepl.state === 'error' && !edited
+
+  // a DeepL answer after saving (auto-save, then "+ DeepL"): the saved word follows
+  useEffect(() => {
+    const where = savedWith.current
+    if (deepl.state !== 'ok' || edited || !where || !where.sentence || where.translation === deepl.text) return
+    where.translation = deepl.text
+    void applyContextTranslation(where, deepl.text)
+  }, [deepl, edited, saved])
 
   async function save(status?: number) {
     if (!dict) return
@@ -96,6 +138,8 @@ export function LookupSheet({
       cardTypes: settings.cardTypes,
       status,
     })
+    if (status !== STATUS_IGNORED && (res.isNew || res.contextAdded))
+      savedWith.current = { termId: res.term.id, sentence: target.sentence, translation: translation.trim() }
     setSaved(status === STATUS_IGNORED ? 'ignored' : res.isNew ? 'new' : res.contextAdded ? 'context' : 'exists')
   }
 
@@ -136,13 +180,30 @@ export function LookupSheet({
       </div>
 
       <div className="sheet-body">
-        <label className="translation">
-          <span className="label">
-            Übersetzung im Kontext
-            {deepl.state === 'ok' && <span className="muted"> (DeepL{deepl.cached ? ', aus dem Cache' : ''})</span>}
-          </span>
-          {deepl.state === 'loading' && !edited && <span className="muted">DeepL übersetzt …</span>}
+        <div className="translation">
+          <div className="translation-head">
+            <label className="label" htmlFor="lookup-translation">
+              Übersetzung
+              {deepl.state === 'ok' ? (
+                <span className="muted"> (DeepL{deepl.cached ? ', aus dem Cache' : ''})</span>
+              ) : (
+                !edited && translation && <span className="muted"> (Wörterbuch)</span>
+              )}
+            </label>
+            {(deepl.state === 'idle' || deepl.state === 'error') && (
+              <button
+                className="deepl-button"
+                onClick={requestDeepl}
+                title="Im Satzkontext mit DeepL übersetzen"
+                data-testid="deepl-request"
+              >
+                {deepl.state === 'error' ? '↻ DeepL' : '+ DeepL'}
+              </button>
+            )}
+            {deepl.state === 'loading' && <span className="muted">DeepL übersetzt …</span>}
+          </div>
           <input
+            id="lookup-translation"
             value={translation}
             data-testid="translation-input"
             onChange={e => {
@@ -162,7 +223,7 @@ export function LookupSheet({
               )}
             </span>
           )}
-        </label>
+        </div>
 
         {existing && existing.translation && existing.translation !== translation && (
           <p className="muted">

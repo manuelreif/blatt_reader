@@ -20,7 +20,7 @@ Ablenker) durch Claude per Copy-Paste. Setup, Deploy und Bedienung: siehe `READM
 ```bash
 npm run dev            # Vite-Dev-Server inkl. /api/translate (Key aus .env)
 npm run typecheck
-npm test               # Vitest, 117 Tests
+npm test               # Vitest, 126 Tests
 npm run e2e            # Playwright gegen Dev-Server (Port 5179), erzeugt Fixtures selbst
 npm run build && E2E_PREVIEW=1 npm run e2e   # gegen Produktions-Build (Port 4179), inkl. CSP- und Passwort-Test
 npm run build:dict     # Ding laden (.cache/) → public/dict/en-de/*.json
@@ -59,7 +59,17 @@ Vor jedem Commit: `npm run typecheck && npm test && npm run e2e`.
   nie in einer Sicherung, nie von einer überschrieben.
 - **Nachschlagen:** `src/reader/selection.ts` findet Wort und Satz unter Finger/Maus
   (`caretPositionFromPoint`, `Intl.Segmenter`, Blocktext mit ` ` als Absatzgrenze, Silbentrennung
-  über Zeilen hinweg). `src/lookup/LookupSheet.tsx` fragt Wörterbuch und DeepL parallel ab.
+  über Zeilen hinweg). `src/lookup/LookupSheet.tsx` zeigt zuerst das Wörterbuch; DeepL nur aus dem Cache
+  (`cachedTranslation`, kostet nichts) oder je nach Setting `deeplMode`: `manual` (Standard, Knopf „+ DeepL“),
+  `fallback` (Wort ohne Wörterbuch-Eintrag), `always`. Das Setting wird im Popup per `getSettings()` gelesen, weil
+  `useSettings()` direkt nach dem Mounten noch die Defaults liefert. Kommt DeepL erst nach dem Speichern
+  (Auto-Speichern), zieht `applyContextTranslation` (`src/db/repo.ts`, auch von `pending.ts` genutzt) Kontext und
+  Wort nach, solange dort noch der Wörterbuch-Ersatz steht.
+- **Satz übersetzen:** Im Übersetzen-Modus wird eine Auswahl über 6 Wörter/80 Zeichen zur Passage
+  (`passageFromSelection` in `selection.ts`, Kontext = bis 800 Zeichen davor/danach) und öffnet
+  `src/lookup/PassageSheet.tsx`: DeepL auf Knopfdruck (bei `always` sofort), max. 1500 Zeichen (Server-Grenze),
+  nichts in die Vokabeln. „Markieren“ speichert die Auswahl als Markierung mit der Übersetzung als Notiz
+  (`saveMark(…, note)` in `ReaderView.tsx`). Die Auswahl bleibt stehen, solange das Popup offen ist (Griffe ziehen).
 - **Grundform:** `src/nlp/lemmatize.ts` mit compromise, **asynchron** (compromise wird erst beim ersten
   Nachschlagen geladen, spart ~340 kB beim Start).
 - **DeepL:** Browser → `/api/translate` → `server/translate.ts` → DeepL. Derselbe Handler läuft als
@@ -93,7 +103,10 @@ Vor jedem Commit: `npm run typecheck && npm test && npm run e2e`.
   bei PDFs keinen Index, darum merkt sich `ReaderView` Dokument → Sektion selbst. Löschen = `deleted: true` +
   `updatedAt` (kein Grabstein), `mergeBackup` nimmt je `id` das neuere `updatedAt`.
 - **Claude-Anreicherung:** `src/enrich/templates.ts` (Prompt + zod-Schema), `importResponse.ts`
-  (JSON aus Antwort holen, abgeschnittene Arrays reparieren, pro Eintrag prüfen), `apply.ts`.
+  (JSON aus Antwort holen, abgeschnittene Arrays reparieren, pro Eintrag prüfen), `apply.ts`. `applyEnrichment`
+  ersetzt `Term.translation` automatisch, wenn sie leer ist oder einem Wörterbuch-Sinn aus `dictSenses` gleicht
+  (`translationFromDictionary`, roh oder per `plainSense`); sonst nur mit dem Haken „auch übernehmen“.
+  Kein eigenes Herkunftsfeld, damit greift es auch für alte Wörter.
 - **Sicherung/Merge:** `src/vocab/export.ts`. `backupJson` (Format `version: 1`, optional `tombstones` und
   `bookProgress`), `mergeBackup` (neueres `updatedAt` gewinnt, Karte mit späterem `last_review` gewinnt,
   Kontexte/Reviews vereinigt, Grabstein neuer als `updatedAt` → Wort samt Zeilen weg, `suspended` folgt dem
@@ -191,11 +204,16 @@ Die Google-Client-ID (siehe `CLAUDE.local.md`) hat als JavaScript-Quellen die dr
 localhost-Ports, `https://<projekt>.pages.dev`.
 Eine neue Domain dort eintragen, sonst `origin_mismatch`.
 
+**Neu (22.11.2026):** Wörterbuch zuerst, DeepL auf Knopfdruck (Einstellung „DeepL abfragen“), ganze Sätze im
+Übersetzen-Modus mit DeepL übersetzen und als Markierungsnotiz behalten. Claude-Anreicherung ersetzt
+Übersetzungen, die nur aus dem Wörterbuch stammen, automatisch.
+
 **Als Nächstes (geplant ab 23.11.2026): Praxistest auf Android**, in Chrome https://<projekt>.pages.dev
 öffnen, anmelden, Menü → „App installieren“, dann in der installierten App:
 - [ ] Icon und Start ohne Browserleiste; Anmeldung bleibt nach Neustart erhalten
 - [ ] Buch importieren (vom Gerät und über Drive)
-- [ ] Wort antippen: Popup passt auf den Bildschirm, Wörterbuch + DeepL, speichern, Quizrunde
+- [ ] Wort antippen: Popup passt auf den Bildschirm, Wörterbuch sofort, „+ DeepL“, speichern, Quizrunde
+- [ ] Satz per Auswahl-Griffen markieren (Übersetzen-Modus): Satz-Popup, „+ Mit DeepL übersetzen“, „Markieren“
 - [ ] Reader-Leiste läuft nicht über den Rand
 - [ ] Lesemodus: Blättern per Tippen links/rechts
 - [ ] Zwei-Finger-Tipp wechselt den Modus

@@ -1,6 +1,20 @@
-import { db } from '../db/schema'
+import { db, type Term } from '../db/schema'
+import { plainSense } from '../lookup/lookupService'
 import type { EnrichItem } from './templates'
 
+/**
+ * The word's translation is only a dictionary sense (or empty): saved without DeepL, or with
+ * DeepL offline. Claude's translation in context is better, so it replaces it without asking.
+ */
+export function translationFromDictionary(term: Pick<Term, 'translation' | 'dictSenses'>): boolean {
+  const t = term.translation.trim()
+  return !t || term.dictSenses.some(s => s.de.trim() === t || plainSense(s.de) === t)
+}
+
+/**
+ * Stores Claude's fields. The translation is replaced where it came from the dictionary;
+ * a DeepL or self-typed one only with `overwriteTranslation`.
+ */
 export async function applyEnrichment(items: EnrichItem[], opts: { overwriteTranslation: boolean }) {
   const now = Date.now()
   await db.transaction('rw', db.terms, async () => {
@@ -9,7 +23,7 @@ export async function applyEnrichment(items: EnrichItem[], opts: { overwriteTran
       if (!term) continue
       await db.terms.put({
         ...term,
-        translation: opts.overwriteTranslation || !term.translation ? it.translation_de : term.translation,
+        translation: opts.overwriteTranslation || translationFromDictionary(term) ? it.translation_de : term.translation,
         explanationDe: it.explanation_de,
         exampleEn: it.example_en,
         ipa: it.ipa || term.ipa,

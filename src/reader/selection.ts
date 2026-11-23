@@ -1,7 +1,7 @@
 // Finds the tapped or selected word and its sentence inside a book document
 // (an EPUB section or a PDF.js text layer, both rendered by foliate-js in iframes).
 import type { HighlightColor } from '../db/schema'
-import { findSentence, normalizeWord, PARAGRAPH_BREAK, wordAt } from '../nlp/sentence'
+import { cleanText, findSentence, normalizeWord, PARAGRAPH_BREAK, wordAt } from '../nlp/sentence'
 import { createGestureTracker, type ReaderMode, type TouchSample } from './modes'
 
 const BLOCK = new Set([
@@ -168,8 +168,10 @@ function wordNear(text: string, pos: number) {
 
 /** Offsets of a DOM range in the section text, widened to whole words; null if empty. */
 export function markFromRange(doc: Document, range: Range): MarkSpan | null {
-  if (!doc.body) return null
-  const bt = buildBlockText(doc.body)
+  return doc.body ? spanIn(buildBlockText(doc.body), range) : null
+}
+
+function spanIn(bt: BlockText, range: Range): MarkSpan | null {
   let start = offsetOf(bt, range.startContainer, range.startOffset)
   let end = offsetOf(bt, range.endContainer, range.endOffset)
   if (start === null) return null
@@ -192,6 +194,31 @@ export function markFromSelection(doc: Document): MarkSpan | null {
   const sel = doc.getSelection()
   if (!sel || sel.isCollapsed || !sel.rangeCount) return null
   return markFromRange(doc, sel.getRangeAt(0))
+}
+
+/** A selection too long to look up: translated as a whole, with the text around it as DeepL context. */
+export interface PassageHit {
+  /** the passage, line breaks and hyphenation at line ends removed */
+  text: string
+  /** text before and after the passage (not billed by DeepL) */
+  context: string
+  span: MarkSpan
+}
+
+const PASSAGE_CONTEXT = 800
+
+/** The current selection as a passage to translate; null if empty. */
+export function passageFromSelection(doc: Document): PassageHit | null {
+  const sel = doc.getSelection()
+  if (!doc.body || !sel || sel.isCollapsed || !sel.rangeCount) return null
+  const bt = buildBlockText(doc.body)
+  const span = spanIn(bt, sel.getRangeAt(0))
+  if (!span) return null
+  const text = cleanText(span.text)
+  if (!text) return null
+  const before = cleanText(bt.text.slice(Math.max(0, span.start - PASSAGE_CONTEXT), span.start))
+  const after = cleanText(bt.text.slice(span.end, span.end + PASSAGE_CONTEXT))
+  return { text, context: [before, after].filter(Boolean).join(' … '), span }
 }
 
 const LOOKUP = 'vr-lookup'
@@ -229,6 +256,8 @@ export interface ReaderHandlers {
   mode(): ReaderMode
   /** translate mode: tapped word or selected phrase */
   onLookup(hit: LookupHit): void
+  /** translate mode: a selection too long to look up (called again while it changes) */
+  onPassage(p: PassageHit): void
   /** mark mode: tapped word that is not marked yet */
   onMarkWord(hit: LookupHit): void
   /** mark mode: there is a selection (called again while it changes) */
@@ -284,11 +313,12 @@ export function attachReaderHandlers(doc: Document, h: ReaderHandlers) {
       const mode = h.mode()
       const selected = doc.getSelection()
       const hasSelection = !!selected && !selected.isCollapsed && selected.toString().trim() !== ''
-      if (mode === 'translate') {
+      if (mode === 'translate' && hasSelection) {
         const sel = hitFromSelection(doc)
-        if (sel) {
+        const passage = sel ? null : passageFromSelection(doc)
+        if (sel || passage) {
           clearTimeout(selTimer)
-          return h.onLookup(sel)
+          return sel ? h.onLookup(sel) : h.onPassage(passage!)
         }
       } else if (mode === 'mark' && hasSelection) {
         clearTimeout(selTimer)
@@ -313,7 +343,9 @@ export function attachReaderHandlers(doc: Document, h: ReaderHandlers) {
       const mode = h.mode()
       if (mode === 'translate') {
         const sel = hitFromSelection(doc)
+        const passage = sel ? null : passageFromSelection(doc)
         if (sel) h.onLookup(sel)
+        else if (passage) h.onPassage(passage)
       } else if (mode === 'mark' && markFromSelection(doc)) h.onMarkSelection()
     }, 700)
   })

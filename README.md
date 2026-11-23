@@ -15,7 +15,7 @@ Läuft als installierbare Web-App (PWA) am Linux-Desktop, auf Android und im Bro
 |---|---|---|
 | [foliate-js](https://github.com/johnfactotum/foliate-js) (Git-Submodule in `public/foliate-js`) | EPUB/MOBI/FB2/CBZ/PDF anzeigen | MIT (PDF.js: Apache-2.0) |
 | Ding EN↔DE ([TU Chemnitz](https://dict.tu-chemnitz.de/)) | Offline-Wörterbuch, wird lokal erzeugt, nicht im Repo | GPL-2.0+ |
-| DeepL API Free | Übersetzung im Kontext (500.000 Zeichen/Monat gratis; der Kontext-Satz zählt nicht) | – |
+| DeepL API Free | Übersetzung im Kontext (500.000 Zeichen/Monat gratis; der Kontext-Satz zählt nicht, ein übersetzter Satz zählt voll) | – |
 | Google Drive API (optional) | Bücherordner und Lernstand zwischen Geräten abgleichen (gratis, ohne Abrechnungskonto) | – |
 | ts-fsrs, Dexie, compromise, zod, React | Quiz-Planung, Datenbank, Grundformen, Prüfung der Claude-Antworten, Oberfläche | MIT / Apache-2.0 |
 
@@ -147,6 +147,10 @@ Bücher und Vokabeln bei Platzmangel löschen; Chrome erlaubt das meist erst bei
 2. In Claude.ai (oder ChatGPT) einfügen und abschicken.
 3. Claudes Antwort (den ```json-Block) kopieren, in der App einfügen, **Prüfen**, dann **Übernehmen**.
 
+Claudes Übersetzung im Satzkontext ersetzt eine Übersetzung, die nur aus dem Wörterbuch stammt (gespeichert
+ohne „+ DeepL“), automatisch. DeepL- oder selbst getippte Übersetzungen bleiben, außer du hakst „Claudes Übersetzung
+auch übernehmen …“ an; die Vorschau zeigt, was ersetzt wird.
+
 Fehlerhafte oder fehlende Einträge zeigt die App an; „Korrektur-Prompt kopieren“ fragt Claude
 gezielt nach genau diesen. Abgeschnittene Antworten werden repariert, soweit die Einträge vollständig sind.
 
@@ -154,8 +158,13 @@ gezielt nach genau diesen. Abgeschnittene Antworten werden repariert, soweit die
 
 - **Modi** (Knopf oben rechts zeigt den aktuellen, ein Tipp schaltet weiter; Tasten `l` / `u` / `m`; am Tablet ein
   Tipp mit **zwei Fingern** ins Buch; der farbige Rand oben zeigt den Modus):
-  - 🔤 **Übersetzen** (Standard): **Wort antippen/anklicken** schlägt nach. **Mehrere Wörter auswählen**: Phrase
-    nachschlagen (z. B. Phrasal Verbs).
+  - 🔤 **Übersetzen** (Standard): **Wort antippen/anklicken** schlägt im Offline-Wörterbuch nach, sofort und
+    gratis. **„+ DeepL“** holt die Übersetzung im Satzkontext dazu. **Mehrere Wörter auswählen** (bis 6): Phrase
+    nachschlagen (z. B. Phrasal Verbs). **Einen Satz oder mehr auswählen**: eigenes Popup, „+ Mit DeepL übersetzen“
+    zeigt die Übersetzung (kommt nicht in die Vokabeln), „Markieren“ legt sie als Notiz einer Markierung ab.
+  - Wann DeepL von selbst fragt, steht unter **Einstellungen → DeepL abfragen**: nur auf Knopfdruck (Standard),
+    wenn das Wörterbuch nichts findet, oder immer (dann auch für Sätze). Schon einmal Übersetztes kommt immer
+    kostenlos aus dem Cache.
   - 📖 **Lesen**: Tippen löst nichts aus, nur das linke bzw. rechte Drittel blättert zurück/weiter.
   - 🖍 **Markieren**: Wort antippen markiert es sofort; Text auswählen (beliebig lang, auch über Absätze) und dann
     eine Farbe antippen. Eine Markierung antippen: Farbe ändern, Notiz, Löschen, Nachschlagen. ☰ oben listet alle

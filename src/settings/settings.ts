@@ -2,9 +2,14 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { db, type CardType, type HighlightColor } from '../db/schema'
 import type { ReaderMode } from '../reader/modes'
 
+/** when DeepL is asked without a tap on "+ DeepL" (cached translations always show) */
+export type DeeplMode = 'manual' | 'fallback' | 'always'
+
 export interface AppSettings {
   /** sent as X-App-Token to /api/translate */
   appToken: string
+  /** manual: only on "+ DeepL"; fallback: words without a dictionary entry; always: words and passages */
+  deeplMode: DeeplMode
   /** save every lookup to the vocabulary without asking */
   autoSave: boolean
   /** card types created for new words */
@@ -21,6 +26,7 @@ export interface AppSettings {
 
 export const DEFAULT_SETTINGS: AppSettings = {
   appToken: '',
+  deeplMode: 'manual',
   autoSave: false,
   cardTypes: ['en-de', 'cloze'],
   newCardsPerDay: 20,

@@ -122,7 +122,7 @@ export function HighlightSheet({
           )
         )}
         {onLookup && words > 0 && words <= MAX_LOOKUP_WORDS && (
-          <button onClick={onLookup} title="Im Wörterbuch und mit DeepL nachschlagen">
+          <button onClick={onLookup} title="Im Wörterbuch nachschlagen">
             Nachschlagen
           </button>
         )}

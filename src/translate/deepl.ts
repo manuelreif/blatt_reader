@@ -20,6 +20,13 @@ export class TranslateError extends Error {
 
 const inFlight = new Map<string, Promise<DeeplResult>>()
 
+const cacheKey = (text: string, context: string) => hashString(`${text}\u0000${context}`)
+
+/** A translation fetched (and paid for) before; never sends a request. */
+export async function cachedTranslation(text: string, context: string): Promise<string | null> {
+  return (await db.translationCache.get(cacheKey(text, context)))?.translation ?? null
+}
+
 /** Translates `text` (a word or phrase) with the sentence as DeepL `context`. */
 export async function translateInContext(
   text: string,
@@ -27,7 +34,7 @@ export async function translateInContext(
   opts: { fetchImpl?: typeof fetch; useCache?: boolean } = {},
 ): Promise<DeeplResult> {
   const { fetchImpl = fetch, useCache = true } = opts
-  const key = hashString(`${text}\u0000${context}`)
+  const key = cacheKey(text, context)
   if (useCache) {
     const hit = await db.translationCache.get(key)
     if (hit) return { translation: hit.translation, cached: true }

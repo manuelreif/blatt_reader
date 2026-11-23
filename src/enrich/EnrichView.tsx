@@ -1,8 +1,8 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useRef, useState } from 'react'
-import { db, STATUS_IGNORED } from '../db/schema'
+import { db, STATUS_IGNORED, type Term } from '../db/schema'
 import { setSetting, useSettings } from '../settings/settings'
-import { applyEnrichment } from './apply'
+import { applyEnrichment, translationFromDictionary } from './apply'
 import { ParseError, parseEnrichResponse, type ImportResult } from './importResponse'
 import { buildEnrichPrompt, buildFixPrompt, toEnrichInput } from './templates'
 
@@ -53,6 +53,11 @@ export function EnrichView() {
   const [overwrite, setOverwrite] = useState(false)
   const [message, setMessage] = useState('')
   const promptBox = useRef<HTMLTextAreaElement>(null)
+  // current translations of the checked words, to show which ones Claude replaces
+  const current = useLiveQuery(async () => {
+    const terms = result ? await db.terms.bulkGet(result.valid.map(v => v.id)) : []
+    return new Map(terms.filter((t): t is Term => !!t).map(t => [t.id, t]))
+  }, [result])
   const fixBox = useRef<HTMLTextAreaElement>(null)
 
   async function start(openUrl?: string) {
@@ -201,12 +206,28 @@ export function EnrichView() {
                 {result.truncated && ' (Antwort war abgeschnitten, vollständige Einträge wurden übernommen)'}
               </p>
               <ul className="enrich-preview">
-                {result.valid.map(v => (
-                  <li key={v.id}>
-                    <b>{v.id}</b> → {v.translation_de}
-                    <span className="muted"> · {v.explanation_de}</span>
-                  </li>
-                ))}
+                {result.valid.map(v => {
+                  const t = current?.get(v.id)
+                  const old = t?.translation.trim() ?? ''
+                  const differs = !!t && old !== v.translation_de.trim()
+                  const replaces = differs && (overwrite || translationFromDictionary(t))
+                  return (
+                    <li key={v.id}>
+                      <b>{v.id}</b> →{' '}
+                      {differs && !replaces ? (
+                        <>
+                          {old} <span className="muted">(bleibt, Claude: {v.translation_de})</span>
+                        </>
+                      ) : (
+                        <>
+                          {v.translation_de}
+                          {replaces && old && <span className="muted"> (statt „{old}“)</span>}
+                        </>
+                      )}
+                      <span className="muted"> · {v.explanation_de}</span>
+                    </li>
+                  )
+                })}
               </ul>
               {problems.length > 0 && (
                 <>
@@ -231,8 +252,9 @@ export function EnrichView() {
               )}
               <label className="check">
                 <input type="checkbox" checked={overwrite} onChange={e => setOverwrite(e.target.checked)} />
-                Claudes Übersetzung statt der bisherigen übernehmen
+                Claudes Übersetzung auch übernehmen, wo DeepL oder du übersetzt habt
               </label>
+              <p className="muted">Übersetzungen, die nur aus dem Wörterbuch stammen, ersetzt Claude ohnehin.</p>
               <button className="primary" disabled={!result.valid.length} onClick={() => void apply()} data-testid="enrich-apply">
                 {result.valid.length} übernehmen
               </button>
