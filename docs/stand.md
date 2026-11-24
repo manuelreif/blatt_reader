@@ -55,6 +55,15 @@ Höchstens 100 Nutzer insgesamt. Dafür öffentliche Seite `/datenschutz`.
 nativen (die Chromes Google-Leiste „Touch to Search“ auslöste), deutliche Rückmeldung beim Speichern (grünes
 „✓ Gespeichert“ + Toast), Popups bleiben beim Hineinzoomen ganz sichtbar.
 
+**Neu (24.11.2026):** Die App übernimmt neue Versionen selbst (Update-Prüfung beim Zurückkehren und stündlich,
+dann kurz neu laden). Anlass: Am Handy lief nach dem Deploy noch die alte Version, das Popup war beim Zoomen
+abgeschnitten; nach Schließen und Neustart der App passte es. Geprüft mit dem Produktions-Build: offene Seite, neu
+gebaut, `visibilitychange` → Seite lädt neu und zeigt die neue Version.
+
+**Echt getestet (24.11.2026):** Popup im hineingezoomten Zustand am Android-Handy erscheint ganz und in normaler
+Größe (mit aktueller Version). In der Emulation zusätzlich mit echter Pinch-Geste
+(`Input.synthesizePinchGesture`, nur mit `gestureSourceType: 'mouse'` wirksam) nachgestellt.
+
 **Echt getestet (24.11.2026):** zweispaltiges arXiv-Paper (BERT, 16 Seiten) im Dev-Server, je Seite gut 20 Wörter
 angetippt und den Satz gegen die Lesereihenfolge von `pdftotext` geprüft: vorher 5 von 43 Sätzen richtig
 (gestapelte Textlayer, Titel/Fußnoten im Satz), danach 235 von 255; der Rest sind Tabellen, Formeln und
@@ -75,6 +84,7 @@ automatisch ersetzt („downstream“: „Abwärtsstrom“ → „nachgelagert�
 - [ ] Hineingezoomt (zwei Finger): Popup erscheint ganz und in normaler Größe; Tastatur im Übersetzungsfeld
       verdeckt das Popup nicht
 - [ ] Reader-Leiste läuft nicht über den Rand
+- [ ] Nach einem Deploy: App aus dem Hintergrund zurückholen → lädt kurz neu und zeigt die neue Version
 - [ ] Lesemodus: Blättern per Tippen links/rechts
 - [ ] Zwei-Finger-Tipp wechselt den Modus
 - [ ] Markieren-Modus: gedrückt halten und ziehen, Farbe, Notiz (ebenfalls ohne Google-Leiste)
@@ -99,7 +109,7 @@ Gefundene Fehler hier ergänzen, erledigte Punkte nach oben in den Stand überne
   echten Android-Gerät (nur Unit-Tests der Automaten, CDP-Touch in Headless-Chromium). Taucht die Google-Leiste
   trotzdem auf: beim Ziehen zusätzlich `user-select: none` am Buchdokument; kommt sie schon beim bloßen Tippen,
   `touchend` von Taps im Übersetzen-Modus abfangen.
-- Popups im gezoomten Zustand auf dem Handy (nur `Emulation.setPageScaleFactor` im E2E-Test)
+- Automatisches Update auf dem Handy (nur im Produktions-Build am Desktop nachgestellt)
 - Copy-Paste über die Oberfläche von claude.ai (Kopieren/Einfügen am Handy); Prompt und Import sind mit einer
   echten Claude-Antwort geprüft
 - Installation als PWA auf Android

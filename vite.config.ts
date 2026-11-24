@@ -109,6 +109,8 @@ export default defineConfig(({ mode }) => {
       cspPlugin(),
       VitePWA({
         registerType: 'autoUpdate',
+        // registered by src/pwa/update.ts, which also reloads into a new version
+        injectRegister: false,
         includeAssets: ['icon.svg', 'apple-touch-icon.png', 'brand/*.svg'],
         manifest: {
           name: 'Blatt-Reader',
@@ -126,6 +128,10 @@ export default defineConfig(({ mode }) => {
           ],
         },
         workbox: {
+          // a new version takes over at once (src/pwa/update.ts then reloads); vite-plugin-pwa sets
+          // these itself only while it injects its own registerSW.js, which injectRegister: false turns off
+          skipWaiting: true,
+          clientsClaim: true,
           globPatterns: ['**/*.{js,mjs,css,html,svg,png,webmanifest,bcmap,pfb,ttf}'],
           globIgnores: ['dict/**', 'foliate-js/tests/**', 'foliate-js/rollup/**', '**/*.map'],
           maximumFileSizeToCacheInBytes: 8 * 1024 * 1024,

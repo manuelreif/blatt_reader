@@ -76,6 +76,17 @@ nach Änderungen hier nachtragen.
   den Dialog per Knopf ab (`InstallButton`: leere Bibliothek, Einstellungen → „App“). Ein Ereignis taugt nur für einen
   Dialog; lehnt man ab, schickt Chrome später ein neues. Installiert erkennt die App an `display-mode: standalone`
   bzw. `appinstalled`. Firefox und Safari kennen das Ereignis nicht, dort steht nur ein Hinweis auf das Browsermenü.
+- **Updates übernehmen:** `src/pwa/update.ts` (`initAutoUpdate()` in `main.tsx`) registriert den Service Worker
+  über `virtual:pwa-register` statt über das von vite-plugin-pwa eingefügte `registerSW.js` (`injectRegister: false`).
+  Dieses Skript registrierte nur: Der neue Worker übernahm im Hintergrund, die offene Seite lief aber mit altem Code
+  weiter, bis sie neu geladen wurde, und Android hält Tab und installierte App tagelang am Leben (so ein Handytest
+  am 24.11.2026 mit dem alten, abgeschnittenen Popup). Jetzt: Update-Prüfung beim Zurückkehren in die App
+  (`visibilitychange`, höchstens einmal pro Minute) und stündlich, danach neu laden, sobald die neue Version aktiv
+  ist (`onNeedReload`). Neu geladen wird sofort, wenn die App im Hintergrund liegt oder höchstens 10 s geöffnet bzw.
+  zurück ist und kein Eingabefeld den Fokus hat, sonst erst beim nächsten Wechsel in den Hintergrund. 1 s Verzögerung,
+  damit die Leseposition (600 ms entprellt) noch gespeichert wird. **Achtung:** Mit `injectRegister: false` setzt das
+  Plugin `skipWaiting`/`clientsClaim` nicht mehr selbst, darum stehen sie ausdrücklich unter `workbox` in
+  `vite.config.ts`; ohne sie würde eine neue Version nie aktiv.
 - **Passwortschutz:** `server/auth.ts` (`authGate`), als Pages-Middleware `functions/_middleware.ts` vor
   allen Anfragen und in `vite.config.ts` vor dev/preview. Aus, solange `APP_PASSWORD` fehlt. Cookie
   `vr_session` = `v1.<ablauf>.<HMAC mit dem Passwort>`, 400 Tage, verlängert sich unter 200 Tagen Rest.
