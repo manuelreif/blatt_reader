@@ -52,6 +52,7 @@ const chapter = `<?xml version="1.0" encoding="UTF-8"?>
 <p id="p1">We had a picnic on the bank of the river. The weather was <em>splendid</em>.</p>
 <p id="p2">Every estimator has a variance. The unbiased estimator was surprisingly reliable.</p>
 <p id="p3">She looked the word up in a dictionary and finally gave up.</p>
+<p id="p4">See the <a href="#p1">glossary</a> for details.</p>
 </body>
 </html>`
 
@@ -91,7 +92,8 @@ const evil = makeEpub(
   chapter.replace('</body>', '<script>parent.parent.document.body.dataset.pwned = "yes"</script></body>'),
 )
 
-function pdf(lines) {
+/** One page of Helvetica lines; `link` puts a web link (annotation) over that line. */
+function pdf(lines, link) {
   const esc = s => s.replace(/[\\()]/g, m => '\\' + m)
   const content = ['BT', '/F1 12 Tf', '72 720 Td', '16 TL']
   lines.forEach((l, i) => content.push(i === 0 ? `(${esc(l)}) Tj` : `T* (${esc(l)}) Tj`))
@@ -100,11 +102,15 @@ function pdf(lines) {
   const objects = [
     '<< /Type /Catalog /Pages 2 0 R >>',
     '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
-    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>',
+    `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R${link ? ' /Annots [7 0 R]' : ''} >>`,
     '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>',
     `<< /Length ${Buffer.byteLength(stream)} >>\nstream\n${stream}\nendstream`,
     '<< /Title (A Statistical Paper) /Author (Ada Tester) >>',
   ]
+  if (link) {
+    const y = 720 - 16 * link.line
+    objects.push(`<< /Type /Annot /Subtype /Link /Rect [70 ${y - 4} 400 ${y + 12}] /Border [0 0 0] /A << /S /URI /URI (${link.uri}) >> >>`)
+  }
   let out = '%PDF-1.4\n'
   const offsets = []
   objects.forEach((o, i) => {
@@ -123,7 +129,7 @@ const paper = pdf([
   'tical model to the survey data.',
   'The estimator is consistent under mild assumptions.',
   'Heteroscedasticity was tested with a robust procedure.',
-])
+], { line: 3, uri: 'https://example.org/robust' })
 
 mkdirSync(outDir, { recursive: true })
 writeFileSync(join(outDir, 'sample.epub'), epub)

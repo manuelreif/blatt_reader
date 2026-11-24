@@ -21,6 +21,7 @@ import {
   markFromSelection,
   markRange,
   prepareDocument,
+  setDocumentMode,
   type LookupHit,
   type MarkSpan,
   type PassageHit,
@@ -87,6 +88,10 @@ export function ReaderView({ bookId, cfi }: { bookId: string; cfi?: string }) {
       highlightsRef.current.filter(h => h.section === index),
     )
   }
+
+  useEffect(() => {
+    for (const doc of docs.current.keys()) setDocumentMode(doc, mode)
+  }, [mode])
 
   function switchMode(next: ReaderMode) {
     if (next !== modeRef.current) {
@@ -243,6 +248,7 @@ export function ReaderView({ bookId, cfi }: { bookId: string; cfi?: string }) {
         view.addEventListener('load', e => {
           const { doc, index } = (e as CustomEvent<{ doc: Document; index: number }>).detail
           prepareDocument(doc)
+          setDocumentMode(doc, modeRef.current)
           docs.current.set(doc, index)
           paint(doc, index)
           // PDF text layers are filled in (and redrawn on zoom) after "load"
@@ -277,6 +283,12 @@ export function ReaderView({ bookId, cfi }: { bookId: string; cfi?: string }) {
           })
           doc.addEventListener('keydown', onKey)
         })
+        // links count only in read mode; in the others a tap on a link looks the word up
+        const followLink = (e: Event) => {
+          if (modeRef.current !== 'read') e.preventDefault()
+        }
+        view.addEventListener('link', followLink)
+        view.addEventListener('external-link', followLink)
         // progressAt only when the position really moved: merely opening the book on a
         // second device must not beat the position synced from the first one
         let savedCfi = b.lastLocation

@@ -470,6 +470,38 @@ test('PDF: a mark is drawn on the text layer and comes back after a reload', asy
   await expect.poll(() => highlightSize(frame, 'vr-hl-yellow')).toBe(1)
 })
 
+test('PDF: links count only in read mode, elsewhere a tap looks up the word under the link', async ({ page }) => {
+  await page.context().route('https://example.org/**', r => r.fulfill({ body: 'linked page' }))
+  const popups: string[] = []
+  page.context().on('page', p => popups.push(p.url()))
+  await page.setInputFiles('[data-testid=book-input]', fixture('sample.pdf'))
+  const frame = await bookFrame(page, 'robust procedure')
+  await expect.poll(() => frame.evaluate(() => document.querySelectorAll('.annotationLayer a[href]').length)).toBe(1)
+
+  // translate mode (default): the word, not the link
+  await clickWord(page, frame, 'robust')
+  const sheet = page.getByTestId('lookup-sheet')
+  await expect(sheet).toContainText('Heteroscedasticity was tested with a robust procedure.')
+  await page.keyboard.press('Escape')
+  await expect(sheet).toHaveCount(0)
+
+  // read mode: the link opens
+  await page.keyboard.press('l')
+  await expect(page.getByTestId('mode-switch')).toContainText('Lesen')
+  const popup = page.context().waitForEvent('page')
+  await clickWord(page, frame, 'robust')
+  await expect.poll(async () => (await popup).url()).toBe('https://example.org/robust')
+  expect(popups).toHaveLength(1)
+  await expect(sheet).toHaveCount(0)
+})
+
+test('EPUB: outside read mode a tap on a link looks the word up', async ({ page }) => {
+  await page.setInputFiles('[data-testid=book-input]', fixture('sample.epub'))
+  const frame = await bookFrame(page, 'glossary')
+  await clickWord(page, frame, 'glossary')
+  await expect(page.getByTestId('lookup-sheet')).toContainText('See the glossary for details.')
+})
+
 test('production build: scripts inside an EPUB are blocked by the CSP', async ({ page }) => {
   test.skip(!process.env.E2E_PREVIEW, 'CSP is only set in the production build')
   await page.setInputFiles('[data-testid=book-input]', fixture('scripted.epub'))

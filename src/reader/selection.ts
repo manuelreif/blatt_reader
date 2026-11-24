@@ -329,8 +329,15 @@ export function prepareDocument(doc: Document) {
     '::highlight(vr-hl-note) { text-decoration: underline dotted 2px; text-underline-offset: 3px; }',
     // after the marks, so the word being looked up stands out on top of them
     `::highlight(${LOOKUP}) { background-color: rgba(255, 160, 0, 0.55); }`,
+    // links count only in read mode; elsewhere taps reach the PDF text under a link's empty box
+    'html:not([data-vr-mode="read"]) .annotationLayer, html:not([data-vr-mode="read"]) .annotationLayer * { pointer-events: none !important; }',
   ].join('\n')
   ;(doc.head ?? doc.documentElement).append(style)
+}
+
+/** Tells a book document the reader mode (links of a PDF only take taps in read mode, see prepareDocument). */
+export function setDocumentMode(doc: Document, mode: ReaderMode) {
+  doc.documentElement.setAttribute('data-vr-mode', mode)
 }
 
 export function markRange(doc: Document, range: Range | null) {
@@ -466,7 +473,7 @@ export function attachReaderHandlers(doc: Document, h: ReaderHandlers) {
       gesture.start(sample)
       const step = press.start(sample)
       if (step?.kind === 'cancel') dropTouchSelection()
-      if (step?.kind !== 'press' || h.mode() === 'read' || inLink(e.target)) return
+      if (step?.kind !== 'press' || h.mode() === 'read') return
       clearTimeout(pressTimer)
       pressTimer = setTimeout(() => {
         const at = press.fire()
@@ -516,7 +523,7 @@ export function attachReaderHandlers(doc: Document, h: ReaderHandlers) {
 
   // no native selection by finger outside read mode (programmatic selections and the mouse stay)
   const blockNative = (e: Event) => {
-    if (ownSelection() && !inLink(e.target)) e.preventDefault()
+    if (ownSelection()) e.preventDefault()
   }
   doc.addEventListener('selectstart', blockNative)
   doc.addEventListener('contextmenu', blockNative)
@@ -533,7 +540,8 @@ export function attachReaderHandlers(doc: Document, h: ReaderHandlers) {
     const start = down
     down = null
     if (e.button !== 0 || gesture.multi(e.timeStamp) || pressUsed) return
-    if ((e.target as Element | null)?.closest?.('a[href]')) return
+    // links count only in read mode (ReaderView cancels foliate's navigation in the others)
+    if (h.mode() === 'read' && inLink(e.target)) return
     setTimeout(() => {
       const mode = h.mode()
       const selected = doc.getSelection()

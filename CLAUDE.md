@@ -125,6 +125,10 @@ Vor jedem Commit: `npm run typecheck && npm test && npm run e2e`.
   `LOCAL_SETTING_KEYS`, also pro Gerät). `attachReaderHandlers` in `selection.ts` verteilt Tippen/Auswahl nach Modus;
   Zwei-Finger-Tipp über den reinen `createGestureTracker` (Taps der beteiligten Finger werden verworfen).
   Lesemodus blättert per Drittel (`tapZone`, x über `frameElement` in Fensterkoordinaten umgerechnet).
+  **Links gelten nur im Lesemodus:** sonst schlägt ein Tipp auf einen Link das Wort nach. `ReaderView` bricht
+  foliates abbrechbare Ereignisse `link`/`external-link` ab; im PDF liegt der Link als leere Box über dem Text,
+  darum macht `prepareDocument` den `.annotationLayer` durchlässig, solange `html[data-vr-mode]`
+  (`setDocumentMode`, folgt dem Setting) nicht `read` ist.
   **Eigene Touch-Auswahl:** Nach einem Finger-`pointerdown` lehnt `attachReaderHandlers` außerhalb des Lesemodus
   `selectstart` und `contextmenu` ab (keine native Auswahl, also keine Griffe, kein Android-Menü mit „Websuche“,
   kein Chrome „Touch to Search“). Stattdessen: Wort 450 ms gedrückt halten (`LONG_PRESS_MS`, Automat
@@ -312,9 +316,7 @@ Gefundene Fehler hier ergänzen, erledigte Punkte nach oben in den Stand überne
 **Offen aus dem Paper-Test (24.11.2026):**
 - Grundform: Adverb auf -ly wird zum Adjektiv, „jointly“ → „joint“ (Wörterbuch dann „ausfugen“);
   „fine-grained“ → „fine grained“ ohne Bindestrich.
-- Zitat-Links im PDF („Radford et al.“): ein Tipp springt auch im Übersetzen-Modus ins Literaturverzeichnis,
-  weil Links in allen Modi Vorrang haben (`a[href]` in `attachReaderHandlers`). Entscheiden, ob Links nur im
-  Lesemodus gelten sollen.
+- ~~Zitat-Links im PDF springen auch im Übersetzen-Modus~~ → erledigt: Links gelten nur noch im Lesemodus.
 
 **Noch nie echt getestet** (nur simuliert bzw. mit generierten Fixtures):
 - Google Drive mit echtem Google: Login-Popup in der installierten Android-PWA, Verhalten nach mehr als
