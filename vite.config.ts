@@ -36,7 +36,7 @@ const send = async (res: ServerResponse, response: Response) => {
 // Same handlers as the Cloudflare Pages Functions, mounted in the dev and preview server.
 function devServerApi(env: TranslateEnv & AuthEnv): Plugin {
   const gate: Connect.NextHandleFunction = (req, res, next) => {
-    if (!env.APP_PASSWORD) return next()
+    // runs without APP_PASSWORD too: the gate also serves the public privacy page
     // only the login form needs the body; other requests (e.g. /api/translate) keep their stream
     const isLogin = (req.url ?? '').split('?')[0] === '/login'
     void toRequest(req, isLogin)
@@ -129,8 +129,8 @@ export default defineConfig(({ mode }) => {
           globPatterns: ['**/*.{js,mjs,css,html,svg,png,webmanifest,bcmap,pfb,ttf}'],
           globIgnores: ['dict/**', 'foliate-js/tests/**', 'foliate-js/rollup/**', '**/*.map'],
           maximumFileSizeToCacheInBytes: 8 * 1024 * 1024,
-          // /login and /logout are answered by the password gate on the server, never from the cache
-          navigateFallbackDenylist: [/^\/api\//, /^\/foliate-js\//, /^\/dict\//, /^\/login/, /^\/logout/],
+          // /login, /logout and /datenschutz are answered by the password gate on the server, never from the cache
+          navigateFallbackDenylist: [/^\/api\//, /^\/foliate-js\//, /^\/dict\//, /^\/login/, /^\/logout/, /^\/datenschutz/],
           runtimeCaching: [
             {
               urlPattern: ({ url }) => url.pathname.startsWith('/dict/'),

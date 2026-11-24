@@ -20,6 +20,8 @@ export type AuthDecision =
   | { pass: true; setCookie?: string }
 
 export const SESSION_COOKIE = 'vr_session'
+/** Public privacy notice, entered as privacy policy URL of the Google OAuth app */
+export const PRIVACY_PATH = '/datenschutz'
 const DAY = 24 * 60 * 60 * 1000
 /** Chrome caps cookie lifetimes at 400 days */
 export const SESSION_DAYS = 400
@@ -95,17 +97,8 @@ const LOGIN_LOGO = `<div class="logo" role="img" aria-label="Blatt-Reader">
   <svg class="lettering" viewBox="0 0 ${LETTERING.width} 100" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="${LETTERING.d}"/></svg>
 </div>`
 
-export function loginPage(error?: string): string {
-  return `<!doctype html>
-<html lang="de">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="robots" content="noindex">
-<meta name="theme-color" content="#141f2d">
-<link rel="icon" href="/icon.svg" type="image/svg+xml">
-<title>Anmelden · Blatt-Reader</title>
-<style>
+/** Shared by the login and the privacy page: palette, watermark, logo. */
+const BASE_STYLE = `
   :root { --bg: #f4efe3; --surface: #fffcf5; --text: #18222f; --muted: #5d6877; --line: #e1d9c5; --accent: #1f3350; --accent-text: #f7f3e8; --danger: #a8322a; --watermark: rgb(20 31 45 / 0.04); color-scheme: light dark; }
   @media (prefers-color-scheme: dark) {
     :root { --bg: #0f1722; --surface: #172231; --text: #ebe5d3; --muted: #9ba6b3; --line: #273548; --accent: #e2d5ad; --accent-text: #141f2d; --danger: #f0958b; --watermark: rgb(230 223 202 / 0.035); }
@@ -118,7 +111,23 @@ export function loginPage(error?: string): string {
   main { width: 100%; max-width: 360px; }
   .logo { display: flex; align-items: center; justify-content: center; gap: 14px; height: 60px; margin-bottom: 28px; }
   .logo .emblem { width: 60px; height: 60px; flex: none; }
-  .logo .lettering { height: 25px; width: auto; }
+  .logo .lettering { height: 25px; width: auto; }`
+
+const pageHead = (title: string, style: string) => `<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#141f2d">
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<title>${title} · Blatt-Reader</title>
+<style>${BASE_STYLE}${style}
+</style>
+</head>`
+
+export function loginPage(error?: string): string {
+  return `${pageHead('Anmelden', `
   form { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 24px;
     box-shadow: 0 1px 2px rgb(20 31 45 / 0.06), 0 10px 30px rgb(20 31 45 / 0.08); }
   h1 { font-size: 1.15rem; margin: 0 0 4px; }
@@ -128,9 +137,7 @@ export function loginPage(error?: string): string {
   input { border: 1px solid var(--line); background: var(--bg); color: var(--text); margin-bottom: 16px; }
   input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent); }
   button { border: 1px solid var(--accent); background: var(--accent); color: var(--accent-text); font-weight: 600; cursor: pointer; }
-  .error { color: var(--danger); }
-</style>
-</head>
+  .error { color: var(--danger); }`)}
 <body>
 <main>
 ${LOGIN_LOGO}
@@ -143,6 +150,54 @@ ${LOGIN_LOGO}
   <input id="password" type="password" name="password" autocomplete="current-password" required autofocus>
   <button type="submit">Anmelden</button>
 </form>
+</main>
+</body>
+</html>`
+}
+
+/**
+ * Privacy notice, public without a session. Google needs its URL to publish the OAuth
+ * app; nothing in the app links to it. No personal details here: the repo is public.
+ */
+export function privacyPage(): string {
+  return `${pageHead('Datenschutz', `
+  body { place-items: start center; }
+  main { max-width: 640px; padding: 24px 0; }
+  article { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 24px; }
+  h1 { font-size: 1.25rem; margin: 0 0 12px; }
+  h2 { font-size: 1rem; margin: 20px 0 4px; }
+  p, li { color: var(--muted); }
+  p { margin: 0 0 8px; }
+  ul { margin: 0; padding-left: 1.2em; }`)}
+<body>
+<main>
+${LOGIN_LOGO}
+<article>
+  <h1>Datenschutz</h1>
+  <p>Blatt-Reader ist eine private, nicht kommerzielle App zum Lesen und Vokabellernen. Sie zeigt keine Werbung und nutzt kein Tracking und keine Analyse-Dienste.</p>
+
+  <h2>Auf deinem Gerät</h2>
+  <p>Bücher, Vokabeln, Markierungen, Lernstand und Einstellungen liegen nur im Speicher deines Browsers. Sie werden nicht auf einen Server dieser App hochgeladen.</p>
+
+  <h2>Übersetzung (DeepL)</h2>
+  <p>Wenn du eine Übersetzung abrufst, gehen das Wort bzw. die markierte Passage und der Satz drumherum über eine Funktion dieser App an DeepL. Gespeichert wird dabei nichts.</p>
+
+  <h2>Google Drive (optional)</h2>
+  <p>Nur wenn du „Mit Google verbinden“ wählst:</p>
+  <ul>
+    <li>Die App liest Bücher aus dem Drive-Ordner, den du auswählst, und lädt sie auf dein Gerät.</li>
+    <li>Sie legt in deinem Drive einen eigenen Ordner an und speichert dort eine Datei mit deinen Vokabeln und deinem Lernstand, damit deine Geräte denselben Stand haben.</li>
+    <li>Der Zugriff läuft direkt zwischen deinem Browser und Google. Kein Server dieser App sieht deine Drive-Daten oder dein Google-Token.</li>
+    <li>Daten aus Google werden nur für diese Funktionen verwendet, nicht weitergegeben und nicht für Werbung genutzt.</li>
+    <li>Den Zugriff kannst du jederzeit unter myaccount.google.com → Sicherheit → Drittanbieter-Apps entziehen.</li>
+  </ul>
+
+  <h2>Anmeldung und Betrieb</h2>
+  <p>Ein Cookie hält dich angemeldet. Gegen das Erraten des Passworts wird die IP-Adresse nach einem Fehlversuch höchstens eine Stunde lang gespeichert. Die App läuft auf Cloudflare Pages; Cloudflare verarbeitet dabei technisch nötige Verbindungsdaten.</p>
+
+  <h2>Fragen</h2>
+  <p>An die Person, die dir den Zugang zur App gegeben hat.</p>
+</article>
 </main>
 </body>
 </html>`
@@ -184,11 +239,14 @@ export async function authGate(
   /** ip: client address where no trusted cf-connecting-ip header exists (Vite server) */
   opts: { now?: number; failDelayMs?: number; ip?: string } = {},
 ): Promise<AuthDecision> {
+  const url = new URL(request.url)
+  const path = url.pathname
+  // served here even without APP_PASSWORD, so the SPA never answers this path
+  if (path === PRIVACY_PATH) return { response: html(privacyPage(), 200, { 'cache-control': 'public, max-age=3600' }) }
+
   const password = env.APP_PASSWORD
   if (!password) return { pass: true }
   const now = opts.now ?? Date.now()
-  const url = new URL(request.url)
-  const path = url.pathname
 
   if (path === '/logout') return { response: redirect('/login', cookieHeader(url, '', 0)) }
 

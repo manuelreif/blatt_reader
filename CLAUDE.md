@@ -20,7 +20,7 @@ Ablenker) durch Claude per Copy-Paste. Setup, Deploy und Bedienung: siehe `READM
 ```bash
 npm run dev            # Vite-Dev-Server inkl. /api/translate (Key aus .env)
 npm run typecheck
-npm test               # Vitest, 154 Tests
+npm test               # Vitest, 155 Tests
 npm run e2e            # Playwright gegen Dev-Server (Port 5179), erzeugt Fixtures selbst
 npm run build && E2E_PREVIEW=1 npm run e2e   # gegen Produktions-Build (Port 4179), inkl. CSP- und Passwort-Test
 npm run build:dict     # Ding laden (.cache/) → public/dict/en-de/*.json
@@ -104,6 +104,9 @@ Vor jedem Commit: `npm run typecheck && npm test && npm run e2e`.
   `vr_session` = `v1.<ablauf>.<HMAC mit dem Passwort>`, 400 Tage, verlängert sich unter 200 Tagen Rest.
   Seiten ohne Sitzung → 303 auf `/login`, alles andere → 401-JSON mit `login: '/login'` (Client zeigt
   „Anmelden“-Link). Manifest und Icons bleiben öffentlich (Chrome holt das Manifest ohne Cookies).
+  `/datenschutz` (`privacyPage()`) liefert das Gate immer selbst aus, auch ohne `APP_PASSWORD`: Google braucht
+  die URL, um die OAuth-App auf „In Produktion“ zu stellen. In der App absichtlich nirgends verlinkt, ohne
+  persönliche Angaben (Repo öffentlich). Bei neuen Datenflüssen (z. B. Live-KI) den Text anpassen.
   **Fehlversuche** begrenzt `server/loginLimit.ts` (`loginLimiter`): 5 pro Stunde ab dem ersten, pro IPv4 bzw.
   IPv6-/64 (`clientKey`), dann 429 + `Retry-After` ohne Passwortprüfung, Erfolg löscht den Zähler. IP aus
   `cf-connecting-ip` (Cloudflare) bzw. `opts.ip` = Socket-Adresse (Vite). Zähler in KV (Binding `LOGIN_ATTEMPTS`,
@@ -202,7 +205,7 @@ Vor jedem Commit: `npm run typecheck && npm test && npm run e2e`.
   Unit-Tests) und einen GIS-Stub. Er wird übersprungen, wenn der Build keine `VITE_GOOGLE_CLIENT_ID` hat:
   für `E2E_PREVIEW=1` also mit `VITE_GOOGLE_CLIENT_ID=e2e-client.apps.googleusercontent.com npm run build`
   bauen und danach **ohne** die Test-ID neu bauen, bevor deployt wird.
-- `/login` und `/logout` stehen in `navigateFallbackDenylist`, sonst beantwortet der Service Worker sie
+- `/login`, `/logout` und `/datenschutz` stehen in `navigateFallbackDenylist`, sonst beantwortet der Service Worker sie
   mit der gecachten App und die Anmeldeseite erscheint nie. Der Preview-Server für E2E läuft mit
   `APP_PASSWORD=e2e-password` (`playwright.config.ts`), die Tests melden sich in `beforeEach` an.
   Alle E2E-Anfragen kommen von derselben Adresse: höchstens 4 Fehlversuche ohne erfolgreiche Anmeldung
@@ -255,6 +258,11 @@ Login-Bremse (5 Fehlversuche pro Stunde und IP).
 **Neu (23.11.2026):** Eigener DeepL-Key pro Gerät (Einstellungen → Übersetzung), damit Mitnutzer auf ihr
 eigenes Kontingent übersetzen; optional erzwingbar mit `DEEPL_REQUIRE_OWN_KEY`.
 
+**Neu (23.11.2026):** Google-OAuth-App „In Produktion“ (vorher „Test“: nur eingetragene Testnutzer, andere Konten
+bekamen `403 access_denied`). Jedes Google-Konto kann Drive verbinden, sieht aber den Hinweis „Google hat diese App
+nicht überprüft“ (→ „Erweitert“ → „Weiter zu …“), weil `drive.readonly` eingeschränkt ist und nie geprüft wurde.
+Höchstens 100 Nutzer insgesamt. Dafür öffentliche Seite `/datenschutz`.
+
 **Neu (23.11.2026):** Aus dem ersten Handytest: Am Touch-Gerät eigene Auswahl per Gedrückthalten + Ziehen statt der
 nativen (die Chromes Google-Leiste „Touch to Search“ auslöste), deutliche Rückmeldung beim Speichern (grünes
 „✓ Gespeichert“ + Toast), Popups bleiben beim Hineinzoomen ganz sichtbar.
@@ -286,8 +294,7 @@ Gefundene Fehler hier ergänzen, erledigte Punkte nach oben in den Stand überne
 
 **Noch nie echt getestet** (nur simuliert bzw. mit generierten Fixtures):
 - Google Drive mit echtem Google: Login-Popup in der installierten Android-PWA, Verhalten nach mehr als
-  1 h, ob `alt=media`-Downloads auf eine andere Domain umleiten (dann in die CSP `connect-src`), ob Google im
-  Status „Testen“ alle 7 Tage neu fragt
+  1 h, ob `alt=media`-Downloads auf eine andere Domain umleiten (dann in die CSP `connect-src`)
 - Zwei-Finger-Tipp und die eigene Touch-Auswahl (Gedrückthalten + Ziehen, abgelehntes `selectstart`) auf einem
   echten Android-Gerät (nur Unit-Tests der Automaten, CDP-Touch in Headless-Chromium). Taucht die Google-Leiste
   trotzdem auf: beim Ziehen zusätzlich `user-select: none` am Buchdokument; kommt sie schon beim bloßen Tippen,

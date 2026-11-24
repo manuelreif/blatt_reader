@@ -48,6 +48,17 @@ describe('authGate', () => {
       expect(await authGate(get(path), env, { now })).toEqual({ pass: true })
   })
 
+  it('serves the privacy page without a session, with or without a password', async () => {
+    for (const e of [env, {}]) {
+      const res = response(await authGate(nav('/datenschutz'), e, { now }))
+      expect(res.status).toBe(200)
+      expect(res.headers.get('content-type')).toContain('text/html')
+      const text = await res.text()
+      expect(text).toContain('<h1>Datenschutz</h1>')
+      expect(text).toContain('Google Drive')
+    }
+  })
+
   it('rejects a wrong password', async () => {
     const res = response(await authGate(login('wrong'), env, { now, failDelayMs: 0 }))
     expect(res.status).toBe(401)
