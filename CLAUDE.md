@@ -20,7 +20,7 @@ Ablenker) durch Claude per Copy-Paste. Setup, Deploy und Bedienung: siehe `READM
 ```bash
 npm run dev            # Vite-Dev-Server inkl. /api/translate (Key aus .env)
 npm run typecheck
-npm test               # Vitest, 155 Tests
+npm test               # Vitest, 169 Tests
 npm run e2e            # Playwright gegen Dev-Server (Port 5179), erzeugt Fixtures selbst
 npm run build && E2E_PREVIEW=1 npm run e2e   # gegen Produktions-Build (Port 4179), inkl. CSP- und Passwort-Test
 npm run build:dict     # Ding laden (.cache/) → public/dict/en-de/*.json
@@ -59,7 +59,11 @@ Vor jedem Commit: `npm run typecheck && npm test && npm run e2e`.
   nie in einer Sicherung, nie von einer überschrieben.
 - **Nachschlagen:** `src/reader/selection.ts` findet Wort und Satz unter Finger/Maus
   (`caretPositionFromPoint`, `Intl.Segmenter`, Blocktext mit ` ` als Absatzgrenze, Silbentrennung
-  über Zeilen hinweg). `src/lookup/LookupSheet.tsx` zeigt zuerst das Wörterbuch; DeepL nur aus dem Cache
+  über Zeilen hinweg). Ein PDF-Textlayer hat keine Absätze: `buildBlockText` liest sie aus der Geometrie
+  (`lineStep`: andere Schriftgröße, Leerraum, Sprung gegen die Leserichtung → ` `; ein `<br>` wird dabei
+  ersetzt, nicht ergänzt, damit Offsets gespeicherter Markierungen gleich bleiben). Bindestrich am Zeilenende
+  bleibt, wenn der Text das Wort (oder eine verwandte Form) sonst mit Bindestrich schreibt
+  (`hyphenatedWords`: „fine-⏎tuned“ → „fine-tuned“, „statis-⏎tical“ → „statistical“). `src/lookup/LookupSheet.tsx` zeigt zuerst das Wörterbuch; DeepL nur aus dem Cache
   (`cachedTranslation`, kostet nichts) oder je nach Setting `deeplMode`: `manual` (Standard, Knopf „+ DeepL“),
   `fallback` (Wort ohne Wörterbuch-Eintrag), `always`. Das Setting wird im Popup per `getSettings()` gelesen, weil
   `useSettings()` direkt nach dem Mounten noch die Defaults liefert. Kommt DeepL erst nach dem Speichern
@@ -183,6 +187,12 @@ Vor jedem Commit: `npm run typecheck && npm test && npm run e2e`.
   EPUBs wirklich; der Test `production build: scripts inside an EPUB are blocked` belegt die Sperre.
   Neue externe Quellen (z. B. eine Live-KI) brauchen einen passenden `connect-src`-Eintrag.
 - PDFs werden absichtlich einseitig angezeigt (`rendition.spread = 'none'` in `ReaderView.tsx`).
+- **foliate stapelt PDF-Textlayer:** `render()` in `foliate-js/pdf.js` leert `.textLayer`/`.annotationLayer` nie und
+  läuft bei Laden, Zoom und Größenänderung parallel. Ohne Gegenmittel lag der Seitentext dreifach und verschränkt
+  im Layer (Sätze über Kopien hinweg, „…architectures that BERT: Pre-training…“). `guardPdfLayers`
+  (`src/reader/pdfLayers.ts`) legt sich in `ReaderView` um `load()` jeder Seite: ein Render nach dem anderen,
+  überholte werden übersprungen, beide Layer vorher geleert. foliate-js selbst bleibt unverändert (Upstream ohne Fix,
+  Stand 24.11.2026).
 - `Intl.Segmenter` beendet Sätze an jedem `\n`; `findSentence` ersetzt Zeilenumbrüche vorher durch Leerzeichen.
 - **Chrome „Touch to Search“** (Google-Leiste unten, beim ersten Mal mit Frage) hängt an jeder nativen
   Textauswahl auf Android; eine Seite kann es nicht abschalten, nur keine native Auswahl entstehen lassen
@@ -267,6 +277,13 @@ Höchstens 100 Nutzer insgesamt. Dafür öffentliche Seite `/datenschutz`.
 nativen (die Chromes Google-Leiste „Touch to Search“ auslöste), deutliche Rückmeldung beim Speichern (grünes
 „✓ Gespeichert“ + Toast), Popups bleiben beim Hineinzoomen ganz sichtbar.
 
+**Echt getestet (24.11.2026):** zweispaltiges arXiv-Paper (BERT, 16 Seiten) im Dev-Server, je Seite gut 20 Wörter
+angetippt und den Satz gegen die Lesereihenfolge von `pdftotext` geprüft: vorher 5 von 43 Sätzen richtig
+(gestapelte Textlayer, Titel/Fußnoten im Satz), danach 235 von 255; der Rest sind Tabellen, Formeln und
+Beschriftungen in Abbildungen. Spalten werden in der richtigen Reihenfolge gelesen, `pdfjs-dist` ist nicht nötig.
+Anreicherung mit einer echten Claude-Antwort auf den Prompt der App: 7 von 7 gültig, Wörterbuch-Übersetzungen
+automatisch ersetzt („downstream“: „Abwärtsstrom“ → „nachgelagert“).
+
 **Als Nächstes (geplant ab 23.11.2026): Praxistest auf Android**, in Chrome die Live-Adresse (`CLAUDE.local.md`)
 öffnen, anmelden, Menü → „App installieren“, dann in der installierten App:
 - [ ] Nach dem Anmelden erscheint „App installieren“ (leere Bibliothek bzw. Einstellungen → App) und öffnet
@@ -292,6 +309,13 @@ nativen (die Chromes Google-Leiste „Touch to Search“ auslöste), deutliche R
       der CSP, Ziel-Domain von `alt=media` in `connect-src` aufnehmen
 Gefundene Fehler hier ergänzen, erledigte Punkte nach oben in den Stand übernehmen.
 
+**Offen aus dem Paper-Test (24.11.2026):**
+- Grundform: Adverb auf -ly wird zum Adjektiv, „jointly“ → „joint“ (Wörterbuch dann „ausfugen“);
+  „fine-grained“ → „fine grained“ ohne Bindestrich.
+- Zitat-Links im PDF („Radford et al.“): ein Tipp springt auch im Übersetzen-Modus ins Literaturverzeichnis,
+  weil Links in allen Modi Vorrang haben (`a[href]` in `attachReaderHandlers`). Entscheiden, ob Links nur im
+  Lesemodus gelten sollen.
+
 **Noch nie echt getestet** (nur simuliert bzw. mit generierten Fixtures):
 - Google Drive mit echtem Google: Login-Popup in der installierten Android-PWA, Verhalten nach mehr als
   1 h, ob `alt=media`-Downloads auf eine andere Domain umleiten (dann in die CSP `connect-src`)
@@ -300,9 +324,8 @@ Gefundene Fehler hier ergänzen, erledigte Punkte nach oben in den Stand überne
   trotzdem auf: beim Ziehen zusätzlich `user-select: none` am Buchdokument; kommt sie schon beim bloßen Tippen,
   `touchend` von Taps im Übersetzen-Modus abfangen.
 - Popups im gezoomten Zustand auf dem Handy (nur `Emulation.setPageScaleFactor` im E2E-Test)
-- echter Copy-Paste-Durchgang mit claude.ai
-- echtes zweispaltiges PDF-Paper (Phase-0-Entscheidung: foliate-js-PDF reicht vorerst; Ausweg wäre
-  `pdfjs-dist` hinter einem Reader-Adapter)
+- Copy-Paste über die Oberfläche von claude.ai (Kopieren/Einfügen am Handy); Prompt und Import sind mit einer
+  echten Claude-Antwort geprüft
 - Installation als PWA auf Android
 
 **Phase 2 (offen):**

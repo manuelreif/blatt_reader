@@ -1,7 +1,7 @@
 // Finds the tapped or selected word and its sentence inside a book document
 // (an EPUB section or a PDF.js text layer, both rendered by foliate-js in iframes).
 import type { HighlightColor } from '../db/schema'
-import { cleanText, findSentence, normalizeWord, PARAGRAPH_BREAK, wordAt } from '../nlp/sentence'
+import { cleanText, findSentence, hyphenatedWords, normalizeWord, PARAGRAPH_BREAK, wordAt } from '../nlp/sentence'
 import { createGestureTracker, createPressTracker, LONG_PRESS_MS, type ReaderMode, type TouchSample } from './modes'
 
 const BLOCK = new Set([
@@ -32,6 +32,36 @@ export function blockOf(node: Node): Element {
   return cur ?? el.ownerDocument.body ?? el
 }
 
+/** Extent of the current line of a PDF text layer. */
+export interface LineBox {
+  top: number
+  bottom: number
+  left: number
+  right: number
+  height: number
+}
+
+/**
+ * How a PDF text-layer span continues the current line: on the `same` line, on the `next`
+ * line of the running text (below, or at the top of the next column), or after a paragraph
+ * end the layer has no markup for (`para`): another font size (title, headings, footnotes,
+ * captions), a blank gap, or a jump the text does not flow along.
+ */
+export function lineStep(line: LineBox, next: Pick<DOMRect, 'top' | 'bottom' | 'left' | 'height'>): 'same' | 'next' | 'para' {
+  if (!next.height || !line.height) return 'same' // no layout (hidden frame, tests): change nothing
+  const small = Math.min(next.height, line.height)
+  const big = Math.max(next.height, line.height)
+  const overlap = Math.min(line.bottom, next.bottom) - Math.max(line.top, next.top)
+  if (overlap > small * 0.25) return 'same' // superscripts included
+  if (small / big < 0.8) return 'para'
+  if (next.top >= line.bottom - small * 0.25) {
+    if (next.top - line.bottom > big * 0.6) return 'para'
+    return next.left >= line.left - 3 * big && next.left < line.right ? 'next' : 'para'
+  }
+  // above the line: only the step up to the top of the next column continues the text
+  return next.left >= line.right - big ? 'next' : 'para'
+}
+
 /** Text of a block plus the start offset of every text node in it. */
 export function buildBlockText(block: Element): BlockText {
   const doc = block.ownerDocument
@@ -43,14 +73,47 @@ export function buildBlockText(block: Element): BlockText {
   })
   const nodes: BlockText['nodes'] = []
   let text = ''
+  // PDF text layers: one positioned span per text run, <br> at line ends, no paragraphs
+  let line: LineBox | null = null
+  let brAt = -1
   for (let n = walker.nextNode(); n; n = walker.nextNode()) {
     if (n.nodeType === Node.TEXT_NODE) {
+      const el = n.parentElement
+      const layer = el?.closest('.textLayer')
+      if (!el || !layer || layer === el) {
+        line = null
+        brAt = -1
+      } else {
+        const r = el.getBoundingClientRect()
+        if (r.height > 0 && (n as Text).data.trim()) {
+          const step = line ? lineStep(line, r) : 'same'
+          if (line && step === 'same') {
+            line = {
+              top: Math.min(line.top, r.top),
+              bottom: Math.max(line.bottom, r.bottom),
+              left: Math.min(line.left, r.left),
+              right: Math.max(line.right, r.right),
+              height: Math.max(line.height, r.height),
+            }
+          } else {
+            // the <br> keeps its place (same length, so offsets of saved marks stay valid)
+            const mark = step === 'para' ? PARAGRAPH_BREAK : '\n'
+            if (brAt >= 0) text = text.slice(0, brAt) + mark + text.slice(brAt + 1)
+            else if (step === 'para' && text && !text.endsWith(PARAGRAPH_BREAK)) text += mark
+            else if (step === 'next' && text && !/\s$/.test(text)) text += mark
+            line = { top: r.top, bottom: r.bottom, left: r.left, right: r.right, height: r.height }
+          }
+          brAt = -1
+        }
+      }
       nodes.push({ node: n as Text, start: text.length })
       text += (n as Text).data
     } else {
       const name = (n as Element).localName
-      if (name === 'br') text += '\n'
-      else if (BLOCK.has(name) && text && !/\s$/.test(text)) text += PARAGRAPH_BREAK
+      if (name === 'br') {
+        brAt = text.length
+        text += '\n'
+      } else if (BLOCK.has(name) && text && !/\s$/.test(text)) text += PARAGRAPH_BREAK
     }
   }
   return { text, nodes }
@@ -146,7 +209,7 @@ export function hitFromRange(selRange: Range): LookupHit | null {
   if (first) start = Math.min(start, first.start)
   if (last) end = Math.max(end, last.end)
   const range = rangeFromOffsets(bt, start, end) ?? selRange.cloneRange()
-  const surface = normalizeWord(bt.text.slice(start, end)) || raw
+  const surface = normalizeWord(bt.text.slice(start, end), hyphenatedWords(bt.text)) || raw
   return { surface, sentence: findSentence(bt.text, start).sentence, range }
 }
 
@@ -239,10 +302,11 @@ export function passageFromRange(doc: Document, range: Range): PassageHit | null
   const bt = buildBlockText(doc.body)
   const span = spanIn(bt, range)
   if (!span) return null
-  const text = cleanText(span.text)
+  const keep = hyphenatedWords(bt.text)
+  const text = cleanText(span.text, keep)
   if (!text) return null
-  const before = cleanText(bt.text.slice(Math.max(0, span.start - PASSAGE_CONTEXT), span.start))
-  const after = cleanText(bt.text.slice(span.end, span.end + PASSAGE_CONTEXT))
+  const before = cleanText(bt.text.slice(Math.max(0, span.start - PASSAGE_CONTEXT), span.start), keep)
+  const after = cleanText(bt.text.slice(span.end, span.end + PASSAGE_CONTEXT), keep)
   return { text, context: [before, after].filter(Boolean).join(' … '), span }
 }
 

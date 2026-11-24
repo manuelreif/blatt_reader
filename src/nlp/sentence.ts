@@ -11,21 +11,42 @@ const EDGE_PUNCT = /^[\s"'“”‘’«»„()[\]{}<>.,;:!?…–—-]+|[\s"'�
 const sentenceSegmenter = new Intl.Segmenter('en', { granularity: 'sentence' })
 const wordSegmenter = new Intl.Segmenter('en', { granularity: 'word' })
 
-/** Joins words hyphenated at a line end and turns remaining line breaks into spaces. */
-export function dehyphenate(text: string): string {
+/**
+ * Compounds a text writes with a hyphen inside a line ("fine-tuned"), lower case: evidence
+ * that the same compound broken at a line end ("fine-\ntuned") keeps its hyphen.
+ */
+export function hyphenatedWords(text: string): Set<string> {
+  const out = new Set<string>()
+  for (const m of text.matchAll(/\p{L}+-\p{L}+/gu)) out.add(m[0].toLowerCase())
+  return out
+}
+
+/**
+ * Joins words hyphenated at a line end ("statis-\ntical") and turns remaining line breaks into
+ * spaces. The hyphen stays next to a capital ("non-\nGaussian", "BERT-\nbased") and for
+ * compounds in `keep` (see hyphenatedWords), also in another form ("fine-tuning" keeps
+ * "fine-\ntuned": same first part, same first three letters after the hyphen).
+ */
+export function dehyphenate(text: string, keep?: ReadonlySet<string>): string {
+  const kept = (a: string, b: string) => {
+    const prefix = `${a}-${b.slice(0, 3)}`.toLowerCase()
+    for (const k of keep ?? []) if (k.startsWith(prefix)) return true
+    return false
+  }
   return text
     .replace(SOFT_HYPHEN, '')
-    .replace(/(\p{Ll})-\n(\p{Ll})/gu, '$1$2')
+    .replace(/(\p{L}*\p{Ll})-\n(\p{Ll}+)/gu, (_, a: string, b: string) => (kept(a, b) ? `${a}-${b}` : a + b))
+    .replace(/(\p{L})-\n(\p{L})/gu, '$1-$2')
     .replace(/\s*\n\s*/g, ' ')
 }
 
-export function cleanText(text: string): string {
-  return dehyphenate(text).replace(/\s+/g, ' ').trim()
+export function cleanText(text: string, keep?: ReadonlySet<string>): string {
+  return dehyphenate(text, keep).replace(/\s+/g, ' ').trim()
 }
 
 /** Trims quotes and punctuation, normalizes apostrophes and whitespace. */
-export function normalizeWord(word: string): string {
-  return cleanText(word).replace(/[’‘`]/g, "'").replace(EDGE_PUNCT, '').replace(/'s$/i, '')
+export function normalizeWord(word: string, keep?: ReadonlySet<string>): string {
+  return cleanText(word, keep).replace(/[’‘`]/g, "'").replace(EDGE_PUNCT, '').replace(/'s$/i, '')
 }
 
 export interface Span {
@@ -41,10 +62,10 @@ export function findSentence(text: string, offset: number): Span & { sentence: s
   for (const seg of sentenceSegmenter.segment(flat)) {
     const end = seg.index + seg.segment.length
     if (offset >= seg.index && offset < end) {
-      return { start: seg.index, end, sentence: cleanText(text.slice(seg.index, end)) }
+      return { start: seg.index, end, sentence: cleanText(text.slice(seg.index, end), hyphenatedWords(text)) }
     }
   }
-  return { start: 0, end: text.length, sentence: cleanText(text) }
+  return { start: 0, end: text.length, sentence: cleanText(text, hyphenatedWords(text)) }
 }
 
 /**
@@ -77,5 +98,5 @@ export function wordAt(text: string, offset: number): (Span & { word: string }) 
   for (let b = sepBefore(first); b.prev >= 0 && joinable(b.sep); b = sepBefore(first)) first = b.prev
   const start = segs[first].index
   const end = segs[last].index + segs[last].segment.length
-  return { start, end, word: normalizeWord(text.slice(start, end)) }
+  return { start, end, word: normalizeWord(text.slice(start, end), hyphenatedWords(text)) }
 }

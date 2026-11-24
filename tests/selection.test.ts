@@ -7,6 +7,7 @@ import {
   extendSelection,
   hitFromRange,
   hitFromSelection,
+  lineStep,
   markFromSelection,
   offsetOf,
   passageFromRange,
@@ -38,6 +39,88 @@ describe('block text', () => {
     const layer = blockOf(span.firstChild!)
     expect(layer.className).toBe('textLayer')
     expect(buildBlockText(layer).text).toBe('We fit a statis-\ntical model.')
+  })
+})
+
+// geometry of real text-layer spans (BERT paper, arXiv 1810.04805, page 1, in px)
+const box = (left: number, top: number, height: number, width = 200) => ({
+  left, top, height, bottom: top + height, right: left + width,
+})
+
+describe('PDF paragraph ends from the layout (lineStep)', () => {
+  const body = box(86, 238, 9.7) // a line of the abstract
+
+  it('continues on the next line of the same column, also below a short last line', () => {
+    expect(lineStep(body, box(86, 250, 9.7))).toBe('next')
+    expect(lineStep(box(86, 331, 9.7, 60), box(86, 343, 9.7))).toBe('next')
+  })
+
+  it('continues at the top of the next column', () => {
+    expect(lineStep(box(70, 733, 10.6, 220), box(309, 218, 10.6))).toBe('next')
+  })
+
+  it('stays on the line for spans side by side and superscripts', () => {
+    expect(lineStep(body, box(290, 238, 9.7))).toBe('same')
+    expect(lineStep(body, box(290, 236, 7))).toBe('same')
+  })
+
+  it('ends the paragraph at a change of font size (title, authors, footnotes)', () => {
+    expect(lineStep(box(113, 68, 14, 400), box(118, 127, 11.6))).toBe('para')
+    expect(lineStep(box(154, 217, 11.6, 50), box(86, 238, 9.7))).toBe('para')
+    expect(lineStep(box(70, 700, 10.6, 220), box(70, 715, 8))).toBe('para')
+  })
+
+  it('ends the paragraph at a blank gap and at a jump against the reading direction', () => {
+    expect(lineStep(box(105, 154, 11.6, 340), box(154, 217, 11.6))).toBe('para')
+    // from the right column back up to the title
+    expect(lineStep(box(298, 271, 10.6, 220), box(113, 68, 10.6))).toBe('para')
+  })
+
+  it('changes nothing without layout', () => {
+    expect(lineStep(box(0, 0, 0), box(0, 0, 0))).toBe('same')
+  })
+})
+
+describe('PDF block text with layout', () => {
+  /** jsdom has no layout: each span gets the box from its data-box attribute */
+  function withBoxes(html: string) {
+    const doc = setup(html)
+    for (const el of doc.querySelectorAll<HTMLElement>('[data-box]')) {
+      const [l, t, h, w] = el.dataset.box!.split(',').map(Number)
+      const b = box(l, t, h, w)
+      el.getBoundingClientRect = () => ({ ...b, x: b.left, y: b.top, width: w, toJSON: () => b }) as DOMRect
+    }
+    return doc.querySelector('.textLayer')!
+  }
+
+  it('ends the title and the heading as paragraphs and keeps the <br> offsets', () => {
+    const layer = withBoxes(
+      '<div class="textLayer">' +
+        '<span data-box="113,68,14,400">BERT: Pre-training of Deep Transformers</span><br>' +
+        '<span data-box="154,217,11.6,50">Abstract</span><br>' +
+        '<span data-box="86,238,9.7,200">We introduce a new language representa-</span><br>' +
+        '<span data-box="86,250,9.7,200">tion model called BERT.</span>' +
+        '</div>',
+    )
+    const plain = withBoxes(layer.outerHTML.replace(/ data-box="[^"]*"/g, ''))
+    const bt = buildBlockText(layer)
+    expect(bt.text).toBe('BERT: Pre-training of Deep Transformers Abstract We introduce a new language representa-\ntion model called BERT.')
+    expect(bt.text.length).toBe(buildBlockText(plain).text.length)
+    const at = bt.text.indexOf('representa')
+    expect(hitFromRange(rangeFromOffsets(bt, at, at + 4)!)).toMatchObject({
+      surface: 'representation',
+      sentence: 'We introduce a new language representation model called BERT.',
+    })
+  })
+
+  it('separates lines that pdf.js gives no <br> (labels in a figure)', () => {
+    const layer = withBoxes(
+      '<div class="textLayer">' +
+        '<span data-box="400,300,7,30">MNLI</span>' +
+        '<span data-box="298,420,10.6,220">Figure 1: Overall procedures.</span>' +
+        '</div>',
+    )
+    expect(buildBlockText(layer).text).toBe('MNLI Figure 1: Overall procedures.')
   })
 })
 

@@ -9,6 +9,7 @@ import { href } from '../router'
 import { getSettings, setSetting, useSettings } from '../settings/settings'
 import { trackVisualViewport } from '../util/visualViewport'
 import { flattenToc, loadFoliate, type FoliateView, type RelocateDetail } from './foliate'
+import { guardPdfLayers } from './pdfLayers'
 import { HighlightList } from './HighlightList'
 import { addHighlight, bookHighlights, drawnRange, highlightAt, paintHighlights } from './highlights'
 import { HighlightSheet } from './HighlightSheet'
@@ -232,6 +233,8 @@ export function ReaderView({ bookId, cfi }: { bookId: string; cfi?: string }) {
         const parsed = await makeBook(new File([b.file], b.fileName, { type: b.file.type }))
         // papers read better one page at a time than as two-page spreads
         if (b.format === 'pdf' && parsed.rendition) parsed.rendition.spread = 'none'
+        // without this, zooming and resizing stack copies of the PDF text layer
+        if (b.format === 'pdf') guardPdfLayers(parsed)
         if (cancelled || !host.current) return parsed.destroy?.()
         view = document.createElement('foliate-view') as FoliateView
         view.className = 'foliate'

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { cleanText, dehyphenate, findSentence, normalizeWord, wordAt } from '../src/nlp/sentence'
+import { cleanText, dehyphenate, findSentence, hyphenatedWords, normalizeWord, wordAt } from '../src/nlp/sentence'
 
 describe('normalizeWord', () => {
   it('trims punctuation and quotes', () => {
@@ -19,8 +19,25 @@ describe('dehyphenate', () => {
   it('joins words split at a line end', () => {
     expect(dehyphenate('a statis-\ntical model')).toBe('a statistical model')
   })
-  it('keeps hyphens before capitals and turns line breaks into spaces', () => {
-    expect(dehyphenate('non-\nGaussian noise\nhere')).toBe('non- Gaussian noise here')
+  it('keeps hyphens next to capitals and turns line breaks into spaces', () => {
+    expect(dehyphenate('non-\nGaussian noise\nhere')).toBe('non-Gaussian noise here')
+    expect(dehyphenate('a BERT-\nbased model')).toBe('a BERT-based model')
+  })
+  it('keeps the hyphen of compounds the text writes with one elsewhere', () => {
+    // BERT paper: "fine-\ntuned" at a line end, "fine-tuned" inside a line
+    const text = 'can be fine-\ntuned with one layer. All fine-tuned models are pre-\ntrained.'
+    const keep = hyphenatedWords(text)
+    expect(keep).toEqual(new Set(['fine-tuned']))
+    expect(dehyphenate(text, keep)).toBe('can be fine-tuned with one layer. All fine-tuned models are pretrained.')
+    expect(findSentence(text, 3).sentence).toBe('can be fine-tuned with one layer.')
+    expect(wordAt(text, text.indexOf('tuned'))!.word).toBe('fine-tuned')
+    expect(wordAt(text, text.indexOf('trained'))!.word).toBe('pretrained')
+  })
+  it('takes other forms of the compound as evidence too', () => {
+    const keep = new Set(['fine-tuning', 'pre-trained'])
+    expect(dehyphenate('is fine-\ntuned and pre-\ntrains a statis-\ntical model', keep)).toBe(
+      'is fine-tuned and pre-trains a statistical model',
+    )
   })
   it('removes soft hyphens', () => {
     expect(cleanText('esti­mator')).toBe('estimator')
