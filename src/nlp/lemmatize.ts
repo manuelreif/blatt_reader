@@ -26,7 +26,7 @@ type Nlp = typeof nlpType
 let nlpModule: Promise<Nlp> | null = null
 const loadNlp = () => (nlpModule ??= import('compromise').then(m => m.default))
 
-function rootInSentence(nlp: Nlp, surface: string, sentence: string): { root?: string; tags: string[] } {
+function rootInSentence(nlp: Nlp, surface: string, sentence: string): { root?: string; tags: string[][] } {
   try {
     const doc = nlp(sentence || surface)
     doc.compute('root')
@@ -37,7 +37,7 @@ function rootInSentence(nlp: Nlp, surface: string, sentence: string): { root?: s
       match = alone
     }
     const json = match.json() as { terms?: { tags?: string[] }[] }[]
-    const tags = json[0]?.terms?.flatMap(t => t.tags ?? []) ?? []
+    const tags = json[0]?.terms?.map(t => t.tags ?? []) ?? []
     const root = match.text('root').trim().toLowerCase()
     return { root: root || undefined, tags }
   } catch {
@@ -75,8 +75,33 @@ export async function lemmatize(surface: string, sentence = ''): Promise<LemmaIn
   const lower = word.toLowerCase()
   const isPhrase = /\s/.test(word)
   const { root, tags } = rootInSentence(await loadNlp(), word, sentence)
-  const pos = isPhrase ? undefined : POS_ORDER.find(([tag]) => tags.includes(tag))?.[1]
+  const pos = isPhrase ? undefined : posOf(tags, lower)
+  if (!isPhrase && lower.includes('-')) return hyphenated(lower, root, pos)
+  // compromise gives an adverb's adjective as root ("jointly" → "joint", "hardly" → "hard"),
+  // but the adverb is the word to learn; the adjective stays a fallback for the dictionary.
+  if (!isPhrase && pos === 'adv' && lower.endsWith('ly')) {
+    return { lemma: lower, pos, candidates: [...new Set([lower, ...(root ? [root] : []), ...stemVariants(lower)])] }
+  }
   const lemma = root && (!isPhrase || root.split(' ').length === lower.split(' ').length) ? root : lower
   const candidates = [...new Set([lemma, lower, ...(isPhrase ? [] : stemVariants(lower))])]
   return { lemma, pos, candidates }
+}
+
+/** Part of speech; a hyphenated compound takes it from its last part ("well-known" → adj). */
+function posOf(tags: string[][], lower: string): string | undefined {
+  const relevant = lower.includes('-') ? tags.slice(-1) : tags
+  const flat = relevant.flat()
+  return POS_ORDER.find(([tag]) => flat.includes(tag))?.[1]
+}
+
+/**
+ * compromise splits "fine-grained" into two terms and roots each on its own, joined by a space
+ * ("fine grained", "left-to-right" → "leave to right"). Keep the word as written; the rooted
+ * form, re-hyphenated, is only a later dictionary candidate.
+ */
+function hyphenated(lower: string, root: string | undefined, pos: string | undefined): LemmaInfo {
+  const parts = lower.split('-').length
+  const rooted = root && root.split(' ').length === parts ? root.split(' ').join('-') : root
+  const candidates = [...new Set([lower, ...(rooted && !/\s/.test(rooted) ? [rooted] : []), ...stemVariants(lower)])]
+  return { lemma: lower, pos, candidates }
 }

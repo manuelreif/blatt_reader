@@ -104,8 +104,10 @@ automatisch ersetzt („downstream“: „Abwärtsstrom“ → „nachgelagert�
 Gefundene Fehler hier ergänzen, erledigte Punkte nach oben in den Stand übernehmen.
 
 **Offen aus dem Paper-Test (24.11.2026):**
-- Grundform: Adverb auf -ly wird zum Adjektiv, „jointly“ → „joint“ (Wörterbuch dann „ausfugen“);
-  „fine-grained“ → „fine grained“ ohne Bindestrich.
+- ~~Grundform: Adverb auf -ly wird zum Adjektiv, „jointly“ → „joint“ (Wörterbuch dann „ausfugen“);
+  „fine-grained“ → „fine grained“ ohne Bindestrich~~ → erledigt (25.11.2026): Adverben auf -ly und Wörter mit
+  Bindestrich bleiben, wie sie im Text stehen; die umgeformte Variante ist nur noch Ersatzkandidat fürs Wörterbuch.
+  Schon gespeicherte „joint“/„fine grained“ bleiben, wie sie sind (von Hand löschen).
 - ~~Zitat-Links im PDF springen auch im Übersetzen-Modus~~ → erledigt: Links gelten nur noch im Lesemodus.
 
 **Noch nie echt getestet** (nur simuliert bzw. mit generierten Fixtures):

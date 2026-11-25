@@ -57,7 +57,12 @@ nach Änderungen hier nachtragen.
   `position: absolute` (nicht `fixed`) mit Höhen in `%`. Nebeneffekt: Die Android-Tastatur (verkleinert seit
   Chrome 108 nur den Visual Viewport) verdeckt das Popup nicht. Neue Sheets im Reader in diese Ebene legen.
 - **Grundform:** `src/nlp/lemmatize.ts` mit compromise, **asynchron** (compromise wird erst beim ersten
-  Nachschlagen geladen, spart ~340 kB beim Start).
+  Nachschlagen geladen, spart ~340 kB beim Start). Kandidaten fürs Wörterbuch in Reihenfolge [Grundform, Wort wie im
+  Text, Suffix-Varianten]; `lookupDictionary` nimmt den ersten Treffer, das gespeicherte Wort bleibt die Grundform
+  (außer der Treffer steht vor ihr). Zwei Ausnahmen, weil compromise dort falsch umformt: **Adverb auf -ly** bleibt
+  („jointly“, nicht das Adjektiv „joint“ → „ausfugen“), das Adjektiv ist nur Ersatzkandidat. **Wort mit Bindestrich**
+  bleibt wie geschrieben: compromise formt jeden Teil einzeln um und fügt mit Leerzeichen zusammen („fine grained“,
+  „left-to-right“ → „leave to right“); Wortart kommt vom letzten Teil („well-known“ → Adjektiv).
 - **DeepL:** Browser → `/api/translate` → `server/translate.ts` → DeepL. Derselbe Handler läuft als
   Cloudflare Pages Function (`functions/api/translate.ts`) und als Vite-Middleware (dev und preview,
   `vite.config.ts`). Wort geht als `text`, Satz als `context` (wird nicht abgerechnet). Free-Keys enden
