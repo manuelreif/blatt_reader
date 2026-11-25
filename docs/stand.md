@@ -11,10 +11,11 @@ Ignorieren, Auto-Speichern), Vokabelliste mit Detailansicht und „im Buch zeige
 FSRS-Quiz (EN→DE, DE→EN, Lückentext), Einstellungen, Backup/Restore, CSV-Export (Vokabeln und
 Review-Log für R), PWA mit Offline-Cache.
 
-**Gemini (Branch `gemini-anreicherung`, 25.11.2026):** „Mit Gemini anreichern“ mit eigenem Free-Tier-Key,
-direkt aus dem Browser. Nur mit Unit-Tests und gestubbter API im E2E-Test (Dev und Produktions-Build mit CSP)
-geprüft. **Noch nie mit echtem Key getestet:** Antwortqualität im Vergleich zu Claude, ob Flash-Lite bei 30 Wörtern
-gültiges JSON liefert, ob das Modell-Alias `gemini-flash-lite-latest` noch existiert, tatsächliches Tageslimit.
+**Gemini (deployt 25.11.2026):** „Mit Gemini anreichern“ mit eigenem Free-Tier-Key, direkt aus dem Browser.
+Echt geprüft: Free-Tier-Key (AI Studio, eigenes Projekt ohne Abrechnung), „Gemini testen“ im Dev-Server liefert
+„bank“ → „Ufer“, das Modell-Alias `gemini-flash-lite-latest` existiert. **Noch offen:** echter Durchgang mit 30
+Wörtern (gültiges JSON? Qualität im Vergleich zu Claude?), tatsächliches Tageslimit, Aufruf aus der Live-Version
+(CSP nur im E2E-Test mit gestubbter API geprüft).
 
 **Echt getestet (21.11.2026):** DeepL-Free-Key in `.env` über `/api/translate`: „bank“ wird je nach
 Satz zu „Ufer“ bzw. „Bank“, abgerechnet werden nur 4 Zeichen (der Kontext zählt nicht).
