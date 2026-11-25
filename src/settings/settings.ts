@@ -1,6 +1,7 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db, type CardType, type HighlightColor } from '../db/schema'
 import type { ReaderMode } from '../reader/modes'
+import { DEFAULT_GEMINI_MODEL } from '../enrich/gemini'
 
 /** when DeepL is asked without a tap on "+ DeepL" (cached translations always show) */
 export type DeeplMode = 'manual' | 'fallback' | 'always'
@@ -10,6 +11,10 @@ export interface AppSettings {
   appToken: string
   /** this device's own DeepL key, sent as x-deepl-key; empty = the server's key */
   deeplKey: string
+  /** this device's own Gemini API key (free tier); empty = no live AI */
+  geminiKey: string
+  /** Gemini model for "Mit Gemini anreichern" */
+  geminiModel: string
   /** manual: only on "+ DeepL"; fallback: words without a dictionary entry; always: words and passages */
   deeplMode: DeeplMode
   /** save every lookup to the vocabulary without asking */
@@ -29,6 +34,8 @@ export interface AppSettings {
 export const DEFAULT_SETTINGS: AppSettings = {
   appToken: '',
   deeplKey: '',
+  geminiKey: '',
+  geminiModel: DEFAULT_GEMINI_MODEL,
   deeplMode: 'manual',
   autoSave: false,
   cardTypes: ['en-de', 'cloze'],
@@ -42,10 +49,10 @@ export const DEFAULT_SETTINGS: AppSettings = {
 /**
  * Rows in db.settings that belong to this device only: never part of a backup and
  * never overwritten by one (open enrichment batch, Google Drive connection, reader mode:
- * reading on the tablet, translating on the desktop is fine; own DeepL key: a secret,
+ * reading on the tablet, translating on the desktop is fine; own DeepL and Gemini keys: secrets,
  * never written to a backup file or Google Drive).
  */
-export const LOCAL_SETTING_KEYS: ReadonlySet<string> = new Set(['enrichBatch', 'drive', 'readerMode', 'deeplKey'])
+export const LOCAL_SETTING_KEYS: ReadonlySet<string> = new Set(['enrichBatch', 'drive', 'readerMode', 'deeplKey', 'geminiKey'])
 
 export async function getSettings(): Promise<AppSettings> {
   const rows = await db.settings.toArray()

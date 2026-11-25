@@ -182,6 +182,9 @@ ${LOGIN_LOGO}
   <h2>Übersetzung (DeepL)</h2>
   <p>Wenn du eine Übersetzung abrufst, gehen das Wort bzw. die markierte Passage und der Satz drumherum über eine Funktion dieser App an DeepL. Gespeichert wird dabei nichts.</p>
 
+  <h2>Live-KI (Google Gemini, optional)</h2>
+  <p>Nur wenn du in den Einstellungen einen eigenen Gemini-Key einträgst und „Mit Gemini anreichern“ wählst: Die ausgewählten Wörter samt Satz und Buchtitel gehen direkt von deinem Browser an Google. Der Key bleibt auf deinem Gerät. Im kostenlosen Tarif darf Google diese Daten zur Verbesserung seiner Dienste verwenden und von Menschen prüfen lassen; es gelten die Bedingungen der Gemini API.</p>
+
   <h2>Google Drive (optional)</h2>
   <p>Nur wenn du „Mit Google verbinden“ wählst:</p>
   <ul>

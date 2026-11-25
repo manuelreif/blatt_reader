@@ -53,9 +53,16 @@ export function extractJson(text: string): { value: unknown; truncated: boolean 
   }
 }
 
+/** `{"words": [...]}` instead of a bare array (JSON mode of some models): the one array inside. */
+function wrappedArray(value: unknown): unknown[] | null {
+  if (!value || typeof value !== 'object' || 'id' in value) return null
+  const arrays = Object.values(value).filter(Array.isArray)
+  return arrays.length === 1 ? arrays[0] : null
+}
+
 export function parseEnrichResponse(text: string, batchIds: string[]): ImportResult {
   const { value, truncated } = extractJson(text)
-  const list = Array.isArray(value) ? value : [value]
+  const list = Array.isArray(value) ? value : (wrappedArray(value) ?? [value])
   const batch = new Set(batchIds)
   const seen = new Set<string>()
   const valid: EnrichItem[] = []

@@ -176,6 +176,22 @@ auch übernehmen …“ an; die Vorschau zeigt, was ersetzt wird.
 Fehlerhafte oder fehlende Einträge zeigt die App an; „Korrektur-Prompt kopieren“ fragt Claude
 gezielt nach genau diesen. Abgeschnittene Antworten werden repariert, soweit die Einträge vollständig sind.
 
+### Optional: in einem Schritt mit Gemini (Free Tier)
+
+Mit einem kostenlosen Gemini-Key entfällt das Kopieren: **Einstellungen → Live-KI** den Key eintragen, dann unter
+**Anreichern → Mit Gemini anreichern**. Vorschau und Übernehmen laufen wie oben.
+
+- Key: mit einem Google-Konto unter aistudio.google.com/apikey („Create API key“), ohne Karte. Solange im
+  Google-Cloud-Projekt keine Abrechnung eingerichtet ist, kann nichts kosten; ist das Kontingent aufgebraucht,
+  meldet die App das (HTTP 429).
+- Kontingent: Google legt es nicht fest und hat es mehrfach gesenkt (Ende 2026 laut Berichten bei Flash-Lite einige
+  Hundert, bei Flash nur etwa 20 Anfragen am Tag). Ein Durchgang ist eine Anfrage, darum reicht das gut.
+  Standardmodell `gemini-flash-lite-latest`, änderbar.
+- Der Aufruf geht direkt vom Browser an Google, nicht über den Server; der Key bleibt auf dem Gerät (nicht in
+  Sicherung oder Drive-Abgleich). Im kostenlosen Tarif darf Google die gesendeten Wörter, Sätze und Buchtitel
+  auswerten. Für Apps, die Nutzern im EWR bereitgestellt werden, sehen Googles Bedingungen den bezahlten Tarif vor,
+  darum gibt es absichtlich keinen Server-Key: Jede Person nutzt die API mit ihrem eigenen Key.
+
 ## Bedienung
 
 - **Modi** (Knopf oben rechts zeigt den aktuellen, ein Tipp schaltet weiter; Tasten `l` / `u` / `m`; am Tablet ein
@@ -270,7 +286,7 @@ src/dict/                    Wörterbuch nachschlagen, komplett offline speicher
 src/lookup/                  Popup: Wörterbuch + DeepL, Speichern
 src/translate/               DeepL-Client, offline gespeicherte Wörter nachübersetzen
 src/drive/                   Google-Login, Drive-Client, Bücher laden, Lernstand abgleichen
-src/enrich/                  Prompt bauen, Claude-Antwort prüfen und übernehmen
+src/enrich/                  Prompt bauen, Claude-Antwort prüfen und übernehmen, optional Gemini
 src/quiz/                    FSRS-Planung und Quiz
 src/db/                      Dexie-Schema und Datenzugriff
 ```

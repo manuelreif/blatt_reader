@@ -56,6 +56,10 @@ describe('parseEnrichResponse', () => {
   it('accepts a single object instead of an array', () => {
     expect(parseEnrichResponse(JSON.stringify(item('bias')), ['bias']).valid).toHaveLength(1)
   })
+  it('unwraps an array inside an object (JSON mode of some models)', () => {
+    const r = parseEnrichResponse(JSON.stringify({ words: [item('bias'), item('variance')] }), ['bias', 'variance'])
+    expect(r.valid.map(v => v.id)).toEqual(['bias', 'variance'])
+  })
 })
 
 describe('prompts', () => {

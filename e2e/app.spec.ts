@@ -358,6 +358,62 @@ test('settings: an own DeepL key goes along with every request and is kept on th
   await expect(page.getByTestId('deepl-key')).toHaveValue('1234abcd-ef:fx')
 })
 
+test('Gemini: with an own key the words are enriched in one step, straight from the browser', async ({ page }) => {
+  const requests: { key?: string; url: string; prompt: string }[] = []
+  await page.route('https://generativelanguage.googleapis.com/**', async route => {
+    const req = route.request()
+    const prompt = (req.postDataJSON() as { contents: { parts: { text: string }[] }[] }).contents[0].parts[0].text
+    requests.push({ key: req.headers()['x-goog-api-key'], url: req.url(), prompt })
+    const items = prompt.includes('"id": "estimator"')
+      ? [
+          {
+            id: 'estimator',
+            translation_de: 'Schätzer',
+            explanation_de: 'Eine Funktion der Daten, die einen unbekannten Parameter schätzt.',
+            example_en: 'The sample mean is an unbiased estimator.',
+            ipa: '/ˈɛstɪmeɪtə/',
+            mnemonic_de: '',
+            confusables: [],
+            distractors_de: ['Schätzung', 'Gutachten', 'Rechner'],
+          },
+        ]
+      : []
+    await route.fulfill({
+      json: { candidates: [{ content: { parts: [{ text: JSON.stringify(items) }] }, finishReason: 'STOP' }] },
+      headers: { 'access-control-allow-origin': '*' },
+    })
+  })
+  await page.setInputFiles('[data-testid=book-input]', fixture('sample.epub'))
+  const frame = await bookFrame(page, 'unbiased estimator')
+  await clickWord(page, frame, 'estimator', 1)
+  await page.getByTestId('save-term').click()
+  await expect(page.getByTestId('saved-state')).toBeVisible()
+
+  // without a key there is no Gemini button
+  await page.goto('/#/enrich')
+  await expect(page.getByTestId('enrich-copy')).toBeVisible()
+  await expect(page.getByTestId('enrich-gemini')).toHaveCount(0)
+
+  await page.goto('/#/settings')
+  await page.getByTestId('gemini-key').fill('AIza-e2e')
+  await page.getByRole('button', { name: 'Gemini testen' }).click()
+  await expect(page.getByText(/^OK: „bank“/)).toBeVisible()
+
+  await page.goto('/#/enrich')
+  await page.getByTestId('enrich-gemini').click()
+  await expect(page.getByTestId('enrich-result')).toContainText('1 gültig')
+  await page.getByTestId('enrich-apply').click()
+  await expect(page.getByText('1 Wörter angereichert')).toBeVisible()
+  expect(requests).toHaveLength(2)
+  expect(requests.every(r => r.key === 'AIza-e2e' && !r.url.includes('AIza'))).toBe(true)
+  expect(requests[1].url).toContain('/models/gemini-flash-lite-latest:generateContent')
+  expect(requests[1].prompt).toContain('The unbiased estimator was surprisingly reliable.')
+
+  await page.goto('/#/vocab')
+  await page.getByTestId('term-list').getByText('estimator').click()
+  await expect(page.getByTestId('term-detail')).toContainText('Eine Funktion der Daten')
+})
+
 test('settings: "always" asks DeepL at once, for words and for sentences', async ({ page }) => {
   await page.goto('/#/settings')
   await page.getByTestId('deepl-mode').selectOption('always')

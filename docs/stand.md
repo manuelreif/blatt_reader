@@ -11,6 +11,11 @@ Ignorieren, Auto-Speichern), Vokabelliste mit Detailansicht und „im Buch zeige
 FSRS-Quiz (EN→DE, DE→EN, Lückentext), Einstellungen, Backup/Restore, CSV-Export (Vokabeln und
 Review-Log für R), PWA mit Offline-Cache.
 
+**Gemini (Branch `gemini-anreicherung`, 25.11.2026):** „Mit Gemini anreichern“ mit eigenem Free-Tier-Key,
+direkt aus dem Browser. Nur mit Unit-Tests und gestubbter API im E2E-Test (Dev und Produktions-Build mit CSP)
+geprüft. **Noch nie mit echtem Key getestet:** Antwortqualität im Vergleich zu Claude, ob Flash-Lite bei 30 Wörtern
+gültiges JSON liefert, ob das Modell-Alias `gemini-flash-lite-latest` noch existiert, tatsächliches Tageslimit.
+
 **Echt getestet (21.11.2026):** DeepL-Free-Key in `.env` über `/api/translate`: „bank“ wird je nach
 Satz zu „Ufer“ bzw. „Bank“, abgerechnet werden nur 4 Zeichen (der Kontext zählt nicht).
 
@@ -125,7 +130,8 @@ Gefundene Fehler hier ergänzen, erledigte Punkte nach oben in den Stand überne
   (Refresh-Token über eine Server-Funktion)
 
 **Phase 3:** Statistik (Vergessenskurven, Serien), Kapitel-Vorschau (unbekannte Wörter vorab lernen),
-Schwierigkeitswert pro Buch, Sync (JSON/WebDAV), optionale kostenlose Live-KI.
+Schwierigkeitswert pro Buch, Sync (JSON/WebDAV), Live-KI auch für „Satz erklären“ im Popup (Gemini ist für
+die Anreicherung angebunden, `askGemini` lässt sich wiederverwenden; pro Antippen eine Anfrage, Tageslimit beachten).
 
 Der ausführliche ursprüngliche Plan mit Recherche, Quellen und Feature-Ideen: `docs/plan.md`
 (Stand bei Projektstart; die Abschnitte oben sind aktueller).

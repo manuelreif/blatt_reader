@@ -12,6 +12,7 @@ import {
   type DictIndex,
   type OfflineStatus,
 } from '../dict/dictionary'
+import { askGemini, DEFAULT_GEMINI_MODEL } from '../enrich/gemini'
 import { translateInContext, TranslateError } from '../translate/deepl'
 import { countPendingTranslations, retryPendingTranslations } from '../translate/pending'
 import { backupJson, download, restoreBackup, reviewLogCsv, vocabCsv } from '../vocab/export'
@@ -162,6 +163,76 @@ function PersistentStorage() {
   )
 }
 
+function GeminiSection() {
+  const s = useSettings()
+  const [test, setTest] = useState('')
+
+  async function testGemini() {
+    setTest('…')
+    try {
+      const answer = await askGemini('Translate the English word "bank" in "We sat on the bank of the river." into German. Answer with the German word only.', {
+        key: s.geminiKey,
+        model: s.geminiModel,
+      })
+      setTest(`OK: „bank“ → „${answer.slice(0, 60)}“`)
+    } catch (e) {
+      setTest(`Fehler: ${(e as Error).message}`)
+    }
+  }
+
+  return (
+    <>
+      <p className="muted">
+        Optional: Statt per Copy-Paste reichert Google Gemini die Wörter unter „Anreichern“ in einem Schritt an. Einen kostenlosen
+        Key gibt es mit einem Google-Konto unter{' '}
+        <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">
+          aistudio.google.com/apikey
+        </a>
+        . Solange in dem Google-Cloud-Projekt keine Abrechnung eingerichtet ist, kostet nichts etwas; ist das Kontingent (je nach
+        Modell nur einige Dutzend bis einige Hundert Anfragen am Tag) aufgebraucht, kommt eine Fehlermeldung.
+      </p>
+      <p className="muted">
+        Im kostenlosen Tarif darf Google die gesendeten Wörter, Sätze und Buchtitel auswerten und von Menschen lesen lassen. Für
+        Apps im EWR sehen Googles Bedingungen eigentlich den bezahlten Tarif vor; mit eigenem Key nutzt du die API selbst. Der Key
+        bleibt auf diesem Gerät (keine Sicherung, kein Drive-Abgleich) und geht direkt an Google, nicht über den Server dieser App.
+      </p>
+      <label className="field">
+        <span className="label">Gemini-Key (optional)</span>
+        <input
+          type="password"
+          value={s.geminiKey}
+          onChange={e => void setSetting('geminiKey', e.target.value)}
+          autoComplete="off"
+          spellCheck={false}
+          placeholder="leer = keine Live-KI"
+          data-testid="gemini-key"
+        />
+      </label>
+      <label className="field">
+        <span className="label">Modell</span>
+        <input
+          value={s.geminiModel}
+          onChange={e => void setSetting('geminiModel', e.target.value)}
+          autoComplete="off"
+          spellCheck={false}
+          placeholder={DEFAULT_GEMINI_MODEL}
+          data-testid="gemini-model"
+        />
+      </label>
+      <p className="muted">
+        Standard „{DEFAULT_GEMINI_MODEL}“ hat das größte Gratis-Kontingent; „gemini-flash-latest“ ist gründlicher, erlaubt
+        kostenlos aber nur wenige Anfragen am Tag.
+      </p>
+      <div className="row">
+        <button disabled={!s.geminiKey.trim()} onClick={() => void testGemini()}>
+          Gemini testen
+        </button>
+        <span>{test}</span>
+      </div>
+    </>
+  )
+}
+
 export function SettingsView() {
   const s = useSettings()
   const [test, setTest] = useState<{ text: string; login?: boolean }>({ text: '' })
@@ -247,6 +318,9 @@ export function SettingsView() {
         </span>
       </div>
       <PendingTranslations />
+
+      <h2>Live-KI (Gemini)</h2>
+      <GeminiSection />
 
       <h2>Wörterbuch</h2>
       <DictionarySection />

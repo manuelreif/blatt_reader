@@ -52,7 +52,7 @@ Vite 8 + React 19 + TS (strict), Hash-Router `src/router.ts`, keine UI-Bibliothe
 | Nachschlagen | `src/lookup/LookupSheet.tsx`, `PassageSheet.tsx`, `src/dict/dictionary.ts`, `src/nlp/lemmatize.ts` |
 | DeepL | `server/translate.ts` (Handler) ← `functions/api/translate.ts` (Pages) und `vite.config.ts` (dev/preview); Client `src/translate/deepl.ts`, `pending.ts` |
 | Passwortschutz | `server/auth.ts`, `server/loginLimit.ts` ← `functions/_middleware.ts` und `vite.config.ts` |
-| Claude-Anreicherung | `src/enrich/` (`templates.ts`, `importResponse.ts`, `apply.ts`) |
+| Claude-Anreicherung | `src/enrich/` (`templates.ts`, `importResponse.ts`, `apply.ts`), optional Gemini `gemini.ts` |
 | Sicherung/Merge | `src/vocab/export.ts` (`backupJson`, `mergeBackup`) |
 | Google Drive | `src/drive/` (`googleAuth.ts`, `driveApi.ts`, `driveSync.ts`, `syncBooks.ts`, `syncVocab.ts`) |
 | Quiz | `src/quiz/scheduler.ts` (ts-fsrs) |

@@ -70,14 +70,15 @@ function devServerApi(env: TranslateEnv & AuthEnv): Plugin {
 // foliate-js renders book content in same-origin blob: iframes. A strict CSP keeps
 // scripts embedded in EPUBs from running (see foliate-js README, "Security").
 // Only in production: the Vite dev server needs inline scripts for hot reload.
-// Google: login script (Identity Services) and the Drive REST API (src/drive/).
+// Google: login script (Identity Services) and the Drive REST API (src/drive/);
+// Gemini API for the optional live AI (src/enrich/gemini.ts).
 const CSP = [
   "default-src 'self'",
   "script-src 'self' 'wasm-unsafe-eval' https://accounts.google.com/gsi/client",
   "style-src 'self' 'unsafe-inline' blob:",
   "img-src 'self' blob: data:",
   "font-src 'self' blob: data:",
-  "connect-src 'self' blob: data: https://www.googleapis.com https://accounts.google.com/gsi/",
+  "connect-src 'self' blob: data: https://www.googleapis.com https://accounts.google.com/gsi/ https://generativelanguage.googleapis.com",
   "frame-src 'self' blob: https://accounts.google.com/gsi/",
   "worker-src 'self' blob:",
   "object-src 'none'",

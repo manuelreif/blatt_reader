@@ -3,6 +3,7 @@ import { useRef, useState } from 'react'
 import { db, STATUS_IGNORED, type Term } from '../db/schema'
 import { setSetting, useSettings } from '../settings/settings'
 import { applyEnrichment, translationFromDictionary } from './apply'
+import { askGemini } from './gemini'
 import { ParseError, parseEnrichResponse, type ImportResult } from './importResponse'
 import { buildEnrichPrompt, buildFixPrompt, toEnrichInput } from './templates'
 
@@ -26,6 +27,15 @@ async function copyText(text: string, fallback?: HTMLTextAreaElement | null): Pr
   }
 }
 
+async function promptFor(terms: Term[]): Promise<string> {
+  const inputs = []
+  for (const t of terms) {
+    const contexts = await db.contexts.where('termId').equals(t.id).sortBy('createdAt')
+    inputs.push(toEnrichInput(t, contexts[contexts.length - 1]))
+  }
+  return buildEnrichPrompt(inputs)
+}
+
 async function createBatch(size: number): Promise<Batch | null> {
   const terms = await db.terms
     .orderBy('createdAt')
@@ -33,12 +43,7 @@ async function createBatch(size: number): Promise<Batch | null> {
     .limit(size)
     .toArray()
   if (!terms.length) return null
-  const inputs = []
-  for (const t of terms) {
-    const contexts = await db.contexts.where('termId').equals(t.id).sortBy('createdAt')
-    inputs.push(toEnrichInput(t, contexts[contexts.length - 1]))
-  }
-  const batch: Batch = { ids: terms.map(t => t.id), prompt: buildEnrichPrompt(inputs), createdAt: Date.now() }
+  const batch: Batch = { ids: terms.map(t => t.id), prompt: await promptFor(terms), createdAt: Date.now() }
   await db.settings.put({ key: BATCH_KEY, value: batch })
   return batch
 }
@@ -59,6 +64,8 @@ export function EnrichView() {
     return new Map(terms.filter((t): t is Term => !!t).map(t => [t.id, t]))
   }, [result])
   const fixBox = useRef<HTMLTextAreaElement>(null)
+  const [geminiRun, setGeminiRun] = useState<AbortController | null>(null)
+  const hasGemini = !!settings.geminiKey.trim()
 
   async function start(openUrl?: string) {
     setMessage('')
@@ -69,11 +76,41 @@ export function EnrichView() {
     if (openUrl) window.open(openUrl, '_blank', 'noopener')
   }
 
-  function check() {
-    if (!batch) return
+  /**
+   * Sends the open batch (or a new one) to Gemini and checks the answer like a pasted one.
+   * The prompt is rebuilt from the batch's ids, so after a partial import only the rest goes out.
+   */
+  async function enrichWithGemini() {
+    setMessage('')
+    setParseError('')
+    setResult(null)
+    const b = batch ?? (await createBatch(settings.enrichBatchSize))
+    if (!b) return setMessage('Alle Wörter sind schon angereichert.')
+    const terms = (await db.terms.bulkGet(b.ids)).filter((t): t is Term => !!t)
+    if (!terms.length) return setMessage('Die Wörter dieses Durchgangs gibt es nicht mehr, bitte verwerfen.')
+    const control = new AbortController()
+    setGeminiRun(control)
+    try {
+      const text = await askGemini(await promptFor(terms), {
+        key: settings.geminiKey,
+        model: settings.geminiModel,
+        json: true,
+        signal: control.signal,
+      })
+      setAnswer(text)
+      check(text, b.ids)
+    } catch (e) {
+      setParseError((e as Error).message)
+    } finally {
+      setGeminiRun(null)
+    }
+  }
+
+  function check(text = answer, ids = batch?.ids) {
+    if (!ids) return
     setParseError('')
     try {
-      setResult(parseEnrichResponse(answer, batch.ids))
+      setResult(parseEnrichResponse(text, ids))
     } catch (e) {
       setResult(null)
       setParseError(e instanceof ParseError ? e.message : 'Antwort konnte nicht gelesen werden')
@@ -89,7 +126,9 @@ export function EnrichView() {
     else await db.settings.delete(BATCH_KEY)
     setMessage(
       `${result.valid.length} Wörter angereichert.` +
-        (rest.length ? ` ${rest.length} fehlen noch: Korrektur-Prompt kopieren und die Antwort erneut einfügen.` : ''),
+        (rest.length
+          ? ` ${rest.length} fehlen noch: ${hasGemini ? 'noch einmal Gemini fragen oder ' : ''}Korrektur-Prompt kopieren und die Antwort erneut einfügen.`
+          : ''),
     )
     setAnswer('')
     setResult(null)
@@ -116,6 +155,9 @@ export function EnrichView() {
         Ohne API und ohne Zusatzkosten: Die App erstellt einen Prompt mit deinen neuen Wörtern samt Satz. Du fügst ihn in
         Claude (oder ChatGPT) ein und kopierst die JSON-Antwort hierher zurück. Claude ergänzt Erklärung, Beispielsatz,
         Aussprache, Eselsbrücke und falsche Antworten fürs Quiz.
+        {hasGemini
+          ? ' Mit deinem Gemini-Key geht es auch in einem Schritt; dann gehen die Wörter samt Satz direkt an Google.'
+          : ' Alternativ in einem Schritt mit einem kostenlosen Gemini-Key (Einstellungen → Live-KI).'}
       </p>
       {message && <p className="ok">{message}</p>}
 
@@ -142,6 +184,8 @@ export function EnrichView() {
               Nur kopieren
             </button>
           </div>
+          {hasGemini && <GeminiButton run={geminiRun} disabled={!pending} onStart={() => void enrichWithGemini()} />}
+          {parseError && <p className="error">{parseError}</p>}
         </div>
       ) : (
         <div className="enrich-batch">
@@ -158,6 +202,7 @@ export function EnrichView() {
               Durchgang verwerfen
             </button>
           </div>
+          {hasGemini && <GeminiButton run={geminiRun} onStart={() => void enrichWithGemini()} />}
 
           <h2>2. Antwort einfügen</h2>
           <textarea
@@ -187,7 +232,7 @@ export function EnrichView() {
                 Aus Zwischenablage einfügen
               </button>
             )}
-            <button className="primary" disabled={!answer.trim()} onClick={check} data-testid="enrich-check">
+            <button className="primary" disabled={!answer.trim()} onClick={() => check()} data-testid="enrich-check">
               Prüfen
             </button>
           </div>
@@ -263,5 +308,22 @@ export function EnrichView() {
         </div>
       )}
     </section>
+  )
+}
+
+function GeminiButton({ run, disabled, onStart }: { run: AbortController | null; disabled?: boolean; onStart: () => void }) {
+  return (
+    <div className="row">
+      {run ? (
+        <>
+          <span className="muted">Gemini antwortet …</span>
+          <button onClick={() => run.abort()}>Abbrechen</button>
+        </>
+      ) : (
+        <button className="primary" disabled={disabled} onClick={onStart} data-testid="enrich-gemini">
+          Mit Gemini anreichern
+        </button>
+      )}
+    </div>
   )
 }

@@ -94,7 +94,7 @@ nach Änderungen hier nachtragen.
   „Anmelden“-Link). Manifest und Icons bleiben öffentlich (Chrome holt das Manifest ohne Cookies).
   `/datenschutz` (`privacyPage()`) liefert das Gate immer selbst aus, auch ohne `APP_PASSWORD`: Google braucht
   die URL, um die OAuth-App auf „In Produktion“ zu stellen. In der App absichtlich nirgends verlinkt, ohne
-  persönliche Angaben (Repo öffentlich). Bei neuen Datenflüssen (z. B. Live-KI) den Text anpassen.
+  persönliche Angaben (Repo öffentlich). Bei neuen Datenflüssen den Text anpassen (Gemini steht schon drin).
   **Fehlversuche** begrenzt `server/loginLimit.ts` (`loginLimiter`): 5 pro Stunde ab dem ersten, pro IPv4 bzw.
   IPv6-/64 (`clientKey`), dann 429 + `Retry-After` ohne Passwortprüfung, Erfolg löscht den Zähler. IP aus
   `cf-connecting-ip` (Cloudflare) bzw. `opts.ip` = Socket-Adresse (Vite). Zähler in KV (Binding `LOGIN_ATTEMPTS`,
@@ -134,6 +134,15 @@ nach Änderungen hier nachtragen.
   ersetzt `Term.translation` automatisch, wenn sie leer ist oder einem Wörterbuch-Sinn aus `dictSenses` gleicht
   (`translationFromDictionary`, roh oder per `plainSense`); sonst nur mit dem Haken „auch übernehmen“.
   Kein eigenes Herkunftsfeld, damit greift es auch für alte Wörter.
+  **Gemini (optional)**: `gemini.ts` (`askGemini`) ruft `generateContent` der Gemini-API direkt aus dem Browser
+  (CORS erlaubt, kein Proxy) mit dem Gerät-Key `geminiKey` (in `LOCAL_SETTING_KEYS`) als Header
+  `x-goog-api-key`, nie als `?key=`. Modell aus `geminiModel` (Standard `gemini-flash-lite-latest`, größtes
+  Gratis-Kontingent), `responseMimeType: application/json`. `EnrichView` baut den Prompt für „Mit Gemini
+  anreichern“ jedes Mal neu aus den ids des offenen Durchgangs (nach teilweisem Übernehmen geht nur der Rest
+  raus) und prüft die Antwort mit demselben `parseEnrichResponse` wie eine eingefügte; der packt auch
+  `{"words": [...]}` aus. Fehlertexte (429 Kontingent, Key, Modell) auf Deutsch in `gemini.ts`. Bewusst kein
+  Server-Key: Googles Bedingungen verlangen für Apps mit Nutzern im EWR den bezahlten Tarif. CSP `connect-src`
+  und `privacyPage()` sind ergänzt.
 - **Sicherung/Merge:** `src/vocab/export.ts`. `backupJson` (Format `version: 1`, optional `tombstones` und
   `bookProgress`), `mergeBackup` (neueres `updatedAt` gewinnt, Karte mit späterem `last_review` gewinnt,
   Kontexte/Reviews vereinigt, Grabstein neuer als `updatedAt` → Wort samt Zeilen weg, `suspended` folgt dem
