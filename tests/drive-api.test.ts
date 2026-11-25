@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { driveClient, DriveError, folderIdFromLink } from '../src/drive/driveApi'
+import { driveClient, DriveError, folderIdFromLink, FOLDER_MIME } from '../src/drive/driveApi'
 import { FakeDrive } from './fake-drive'
 
 const ID = '1AbCdEfGhIjKlMnOpQrStUvWxYz012345'
@@ -34,6 +34,33 @@ describe('driveClient', () => {
     expect(files.find(f => f.name === 'b.pdf')?.size).toBe('2')
     // root folder: 2 pages; subfolder: 1 page
     expect(fake.log.filter(l => l === 'GET /drive/v3/files')).toHaveLength(3)
+  })
+
+  it('leaves out folders to skip, with everything below them', async () => {
+    const fake = new FakeDrive()
+    const books = fake.folder('Bücher')
+    const own = fake.folder('Uni', books.id) // a books folder of its own
+    fake.add({ name: 'a.epub', parents: [books.id] })
+    fake.add({ name: 'b.epub', parents: [fake.folder('2025', own.id).id] })
+    const drive = driveClient(fake.token, fake.fetch)
+    expect((await drive.listFolderTree(books.id, new Set([own.id]))).map(f => f.name)).toEqual(['a.epub'])
+  })
+
+  it('lists what the folder browser shows: one level, shared folders, a search, shared drives', async () => {
+    const fake = new FakeDrive()
+    const uni = fake.folder('Uni')
+    fake.add({ name: 'z.epub', parents: [uni.id] })
+    fake.folder('Paper', uni.id)
+    fake.folder('Alt', uni.id)
+    fake.add({ name: 'Romane von Anna', mimeType: FOLDER_MIME, parents: ['annas-root'], sharedWithMe: true, owner: 'Anna' })
+    fake.drives.push({ id: 'drive0000001', name: 'Team' })
+    const drive = driveClient(fake.token, fake.fetch)
+
+    // folders first, then by name
+    expect((await drive.listChildren(uni.id)).map(f => f.name)).toEqual(['Alt', 'Paper', 'z.epub'])
+    expect(await drive.sharedFolders()).toMatchObject([{ name: 'Romane von Anna', ownedByMe: false, owners: [{ displayName: 'Anna' }] }])
+    expect((await drive.searchFolders('roman')).map(f => f.name)).toEqual(['Romane von Anna'])
+    expect(await drive.sharedDrives()).toEqual([{ id: 'drive0000001', name: 'Team' }])
   })
 
   it('uploads in two steps (resumable) and replaces the content later', async () => {

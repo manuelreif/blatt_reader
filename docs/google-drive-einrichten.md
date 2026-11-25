@@ -74,7 +74,8 @@ Neue oder geänderte JavaScript-Quellen gelten manchmal erst nach ein paar Minut
 6. Auf der Berechtigungsseite setzt du **beide Häkchen**, dann **Weiter**. Das eine erlaubt, Drive-Dateien
    anzusehen, das andere, die von der App angelegten Dateien zu bearbeiten.
 7. In „Meine Ablage“ liegt jetzt der Ordner **Blatt-Reader**. Leg ein EPUB oder PDF hinein und tippe in
-   der App auf **Jetzt abgleichen**.
+   der App auf **Jetzt abgleichen**. Weitere Ordner, auch für dich freigegebene, kommen über
+   **+ Ordner hinzufügen** dazu.
 
 ## 6. Später: Cloudflare und Handy
 

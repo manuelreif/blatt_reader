@@ -188,7 +188,7 @@ ${LOGIN_LOGO}
   <h2>Google Drive (optional)</h2>
   <p>Nur wenn du „Mit Google verbinden“ wählst:</p>
   <ul>
-    <li>Die App liest Bücher aus dem Drive-Ordner, den du auswählst, und lädt sie auf dein Gerät.</li>
+    <li>Die App liest Bücher aus den Drive-Ordnern, die du auswählst, und lädt sie auf dein Gerät. Zum Auswählen zeigt sie dir die Namen deiner Ordner (und der für dich freigegebenen) an; diese Liste entsteht nur in deinem Browser.</li>
     <li>Sie legt in deinem Drive einen eigenen Ordner an und speichert dort eine Datei mit deinen Vokabeln und deinem Lernstand, damit deine Geräte denselben Stand haben.</li>
     <li>Der Zugriff läuft direkt zwischen deinem Browser und Google. Kein Server dieser App sieht deine Drive-Daten oder dein Google-Token.</li>
     <li>Daten aus Google werden nur für diese Funktionen verwendet, nicht weitergegeben und nicht für Werbung genutzt.</li>

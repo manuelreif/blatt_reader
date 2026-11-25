@@ -29,6 +29,8 @@ export interface AppSettings {
   readerMode: ReaderMode
   /** color for the next mark */
   highlightColor: HighlightColor
+  /** library filter by origin (src/library/groups.ts): folder id, 'other' or '' = all books (per device) */
+  libraryFilter: string
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -44,15 +46,16 @@ export const DEFAULT_SETTINGS: AppSettings = {
   readerFontScale: 1,
   readerMode: 'translate',
   highlightColor: 'yellow',
+  libraryFilter: '',
 }
 
 /**
  * Rows in db.settings that belong to this device only: never part of a backup and
  * never overwritten by one (open enrichment batch, Google Drive connection, reader mode:
  * reading on the tablet, translating on the desktop is fine; own DeepL and Gemini keys: secrets,
- * never written to a backup file or Google Drive).
+ * never written to a backup file or Google Drive; library filter: what this device shows).
  */
-export const LOCAL_SETTING_KEYS: ReadonlySet<string> = new Set(['enrichBatch', 'drive', 'readerMode', 'deeplKey', 'geminiKey'])
+export const LOCAL_SETTING_KEYS: ReadonlySet<string> = new Set(['enrichBatch', 'drive', 'readerMode', 'deeplKey', 'geminiKey', 'libraryFilter'])
 
 export async function getSettings(): Promise<AppSettings> {
   const rows = await db.settings.toArray()

@@ -1,27 +1,35 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useEffect, useState } from 'react'
-import { BooksFolderLink, statusText } from './DriveBar'
+import type { DriveClient } from './driveApi'
+import { FolderLink, statusText } from './DriveBar'
 import {
+  addBookSource,
   APP_FOLDER_NAME,
+  browseClient,
   disconnectDrive,
   reloadSkippedBooks,
-  setBooksFolder,
+  removeBookSource,
   syncDrive,
   useDriveState,
   useDriveStatus,
+  type BookSource,
 } from './driveSync'
+import { FolderPicker } from './FolderPicker'
 import { driveConfigured, preloadGis } from './googleAuth'
-import { countSkippedDriveFiles } from './syncBooks'
+import { booksBySource, countSkippedDriveFiles } from './syncBooks'
 import { SYNC_FILE } from './syncVocab'
 
 const when = (ms: number) => new Date(ms).toLocaleString('de-AT', { dateStyle: 'medium', timeStyle: 'short' })
 
-/** Settings section "Google Drive": connect, books folder, sync, disconnect. */
+const bookCount = (n: number) => (n === 1 ? '1 Buch' : `${n} Bücher`)
+
+/** Settings section "Google Drive": connect, books folders, sync, disconnect. */
 export function DriveSettings() {
   const state = useDriveState()
   const status = useDriveStatus()
   const skipped = useLiveQuery(countSkippedDriveFiles, [], 0)
-  const [link, setLink] = useState('')
+  const counts = useLiveQuery(booksBySource, [])
+  const [picker, setPicker] = useState<DriveClient | null>(null)
   const [folderError, setFolderError] = useState('')
   const [busy, setBusy] = useState(false)
   useEffect(() => preloadGis(), [])
@@ -54,13 +62,28 @@ export function DriveSettings() {
     )
 
   const appFolder = state.appFolderName ?? APP_FOLDER_NAME
+  const sources = state.sources ?? []
+  const countOf = (id?: string) => (id && counts?.get(id)?.size) || 0
+  const added = new Set([state.appFolderId, ...sources.map(s => s.id)].filter((id): id is string => !!id))
 
-  async function changeFolder(value: string | null) {
+  async function openPicker() {
+    setFolderError('')
+    try {
+      // right in the tap: the login popup may open
+      setPicker(await browseClient())
+    } catch (e) {
+      setFolderError((e as Error).message)
+    }
+  }
+
+  async function remove(source: BookSource) {
+    const n = countOf(source.id)
+    const kept = n ? ` ${n === 1 ? 'Das Buch' : `Die ${n} Bücher`} von dort ${n === 1 ? 'bleibt' : 'bleiben'} in der Bibliothek.` : ''
+    if (!confirm(`„${source.name}“ nicht mehr abgleichen?${kept}`)) return
     setFolderError('')
     setBusy(true)
     try {
-      await setBooksFolder(value)
-      setLink('')
+      await removeBookSource(source.id)
     } catch (e) {
       setFolderError((e as Error).message)
     } finally {
@@ -70,41 +93,43 @@ export function DriveSettings() {
 
   return (
     <div data-testid="drive-settings">
-      <p>
-        Bücherordner: <BooksFolderLink state={state} />
-        {!state.booksFolderId && <span className="muted"> (in „Meine Ablage“, von der App angelegt)</span>}
-      </p>
-      <p className="muted">
-        Neue EPUBs und PDFs in diesem Ordner (auch in Unterordnern) lädt die App beim Abgleich herunter. Der Lernstand liegt als{' '}
-        <code>{SYNC_FILE}</code> im Ordner „{appFolder}“.
-      </p>
-      <form
-        className="row"
-        onSubmit={e => {
-          e.preventDefault()
-          if (link.trim()) void changeFolder(link)
-        }}
-      >
-        <input
-          className="drive-link"
-          type="text" // not "url": a folder name or bare id is fine too
-          inputMode="url"
-          autoComplete="off"
-          placeholder="Name oder Link eines anderen Drive-Ordners"
-          value={link}
-          onChange={e => setLink(e.target.value)}
-          aria-label="Name oder Link eines anderen Drive-Ordners"
+      <p className="label">Bücherordner</p>
+      <ul className="source-list" data-testid="book-sources">
+        <li>
+          <FolderLink id={state.appFolderId} name={appFolder} />
+          <span className="muted">
+            in „Meine Ablage“, immer dabei{countOf(state.appFolderId) ? ` · ${bookCount(countOf(state.appFolderId))}` : ''}
+          </span>
+        </li>
+        {sources.map(s => (
+          <li key={s.id}>
+            <FolderLink id={s.id} name={s.name} />
+            {s.error ? <span className="warn">{s.error}</span> : <span className="muted">{bookCount(countOf(s.id))}</span>}
+            <button type="button" className="source-remove" disabled={busy} onClick={() => void remove(s)}>
+              Entfernen
+            </button>
+          </li>
+        ))}
+      </ul>
+      {picker ? (
+        <FolderPicker
+          client={picker}
+          added={added}
+          onAdd={folder => addBookSource(folder)}
+          onClose={() => setPicker(null)}
         />
-        <button type="submit" disabled={busy || !link.trim()}>
-          Ordner übernehmen
-        </button>
-        {state.booksFolderId && (
-          <button type="button" disabled={busy} onClick={() => void changeFolder(null)}>
-            Zurück auf „{appFolder}“
+      ) : (
+        <div className="row">
+          <button type="button" disabled={busy} onClick={() => void openPicker()}>
+            + Ordner hinzufügen
           </button>
-        )}
-      </form>
+        </div>
+      )}
       {folderError && <p className="warn">{folderError}</p>}
+      <p className="muted">
+        Neue EPUBs und PDFs in diesen Ordnern (auch in Unterordnern) lädt die App beim Abgleich herunter. Die Liste gilt für alle
+        deine Geräte. Der Lernstand liegt als <code>{SYNC_FILE}</code> im Ordner „{appFolder}“.
+      </p>
 
       <div className="row">
         <button disabled={status.running} onClick={() => void syncDrive({ interactive: true })}>

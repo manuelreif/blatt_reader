@@ -5,6 +5,8 @@ const API = 'https://www.googleapis.com/drive/v3'
 const UPLOAD = 'https://www.googleapis.com/upload/drive/v3'
 export const FOLDER_MIME = 'application/vnd.google-apps.folder'
 const FILE_FIELDS = 'id,name,mimeType,size,md5Checksum,appProperties,trashed'
+/** what the folder browser shows */
+const BROWSE_FIELDS = 'id,name,mimeType,ownedByMe,owners(displayName)'
 /** subfolders of the books folder are searched this deep */
 const MAX_DEPTH = 5
 
@@ -17,6 +19,14 @@ export interface DriveFile {
   md5Checksum?: string
   appProperties?: Record<string, string>
   trashed?: boolean
+  ownedByMe?: boolean
+  owners?: { displayName?: string }[]
+}
+
+/** A shared drive (Google Workspace); its id is also the id of its top folder. */
+export interface SharedDrive {
+  id: string
+  name: string
 }
 
 export class DriveError extends Error {
@@ -121,10 +131,13 @@ export function driveClient(token: string, fetchImpl: typeof fetch = fetch) {
     getFile: async (id: string, fields = FILE_FIELDS): Promise<DriveFile> =>
       json<DriveFile>(await call(`${API}/files/${encodeURIComponent(id)}?fields=${encodeURIComponent(fields)}&${common}`)),
 
-    /** All files below a folder (subfolders included), without the folders themselves. */
-    async listFolderTree(folderId: string): Promise<DriveFile[]> {
+    /**
+     * All files below a folder (subfolders included), without the folders themselves.
+     * Folders in `skip` are left out with everything below them (books folders of their own).
+     */
+    async listFolderTree(folderId: string, skip: ReadonlySet<string> = new Set()): Promise<DriveFile[]> {
       const files: DriveFile[] = []
-      const seen = new Set([folderId])
+      const seen = new Set([folderId, ...skip])
       const queue = [{ id: folderId, depth: 0 }]
       while (queue.length) {
         const { id, depth } = queue.shift()!
@@ -145,8 +158,31 @@ export function driveClient(token: string, fetchImpl: typeof fetch = fetch) {
         orderBy: 'createdTime',
       }),
 
-    /** Folders with exactly this name anywhere the user can see (My Drive, shared with me, shared drives). */
-    findFoldersByName: (name: string) => search(`mimeType = ${quote(FOLDER_MIME)} and name = ${quote(name)} and trashed = false`),
+    /** One level of a folder for the folder browser: subfolders first, then files, each by name. */
+    listChildren: (folderId: string) =>
+      search(`${quote(folderId)} in parents and trashed = false`, { fields: BROWSE_FIELDS, orderBy: 'folder,name' }),
+
+    /** Folders others shared with the user ("Für mich freigegeben"). */
+    sharedFolders: () =>
+      search(`sharedWithMe = true and mimeType = ${quote(FOLDER_MIME)} and trashed = false`, { fields: BROWSE_FIELDS, orderBy: 'name' }),
+
+    /** Folders whose name contains a word starting with `text` (Drive matches name terms by prefix). */
+    searchFolders: (text: string) =>
+      search(`mimeType = ${quote(FOLDER_MIME)} and name contains ${quote(text)} and trashed = false`, { fields: BROWSE_FIELDS, orderBy: 'name' }),
+
+    /** Shared drives the user is a member of; usually none outside Google Workspace. */
+    async sharedDrives(): Promise<SharedDrive[]> {
+      const out: SharedDrive[] = []
+      let pageToken: string | undefined
+      do {
+        const params = new URLSearchParams({ pageSize: '100', fields: 'nextPageToken,drives(id,name)' })
+        if (pageToken) params.set('pageToken', pageToken)
+        const data = await json<{ drives?: SharedDrive[]; nextPageToken?: string }>(await call(`${API}/drives?${params}`))
+        out.push(...(data.drives ?? []))
+        pageToken = data.nextPageToken
+      } while (pageToken)
+      return out
+    },
 
     findFile: async (name: string, parentId: string): Promise<DriveFile | undefined> =>
       (await search(`name = ${quote(name)} and ${quote(parentId)} in parents and trashed = false`, { orderBy: 'createdTime' }))[0],

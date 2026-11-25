@@ -26,6 +26,12 @@ DeepL für offline gespeicherte Wörter nachholen, Anzeige „dauerhafter Speich
 **Neu (21.11.2026):** Google-Drive-Abgleich: Bücherordner automatisch laden, Vokabeln/Lernstand/Lesefortschritt
 zwischen Geräten zusammenführen (Grabsteine für gelöschte Wörter), Merge auch beim manuellen Einspielen.
 
+**Neu (25.11.2026):** Mehrere Drive-Bücherordner. Ordner-Browser in den Einstellungen („Meine Ablage“, „Für
+mich freigegeben“, geteilte Ablagen, Suche nach Name oder Link), die Liste gilt für alle Geräte. Ein
+nicht erreichbarer Ordner hält den Rest nicht auf, und beim Entfernen bleiben die Bücher. In der Bibliothek
+gibt es einen Filter nach Ordner. Geprüft ist das nur mit dem Fake-Drive (Unit + E2E, auch 400 px breit), mit
+echtem Google noch nicht.
+
 **Neu (21.11.2026):** Reader-Modi Lesen/Übersetzen/Markieren (Knopf, Tasten l/u/m, Zwei-Finger-Tipp) und
 Markierungen mit Farben, Notizen und Liste pro Buch, mit Sicherung und Drive-Abgleich.
 
@@ -101,6 +107,9 @@ automatisch ersetzt („downstream“: „Abwärtsstrom“ → „nachgelagert�
 - [ ] Abgleich Desktop ↔ Handy: Wort am Desktop speichern, auf beiden „Jetzt abgleichen“
 - [ ] Drive lädt ein Buch aus dem Ordner wirklich herunter (auch am Desktop noch offen); scheitert es an
       der CSP, Ziel-Domain von `alt=media` in `connect-src` aufnehmen
+- [ ] „+ Ordner hinzufügen“ am Handy: durch „Meine Ablage“ und „Für mich freigegeben“ tippen, einen
+      freigegebenen Ordner hinzufügen, seine Bücher kommen, der Filter in der Bibliothek erscheint;
+      „Geteilte Ablagen“ nur mit einem Workspace-Konto prüfbar
 Gefundene Fehler hier ergänzen, erledigte Punkte nach oben in den Stand übernehmen.
 
 **Offen aus dem Paper-Test (24.11.2026):**

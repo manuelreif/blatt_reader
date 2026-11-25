@@ -107,10 +107,10 @@ nimmt den Lernstand per Sicherung mit.
 
 ## Google Drive (optional)
 
-Ein Ordner in Google Drive wird zur Quelle für Bücher, und Vokabeln, Lernstand und Lesefortschritt
+Ordner in Google Drive werden zur Quelle für Bücher, und Vokabeln, Lernstand und Lesefortschritt
 bleiben auf allen Geräten gleich:
 
-- **Bücher:** Neue EPUBs und PDFs im Ordner (auch in Unterordnern) lädt die App beim Abgleich
+- **Bücher:** Neue EPUBs und PDFs in den Bücherordnern (auch in Unterordnern) lädt die App beim Abgleich
   automatisch herunter. Danach liegen sie komplett auf dem Gerät und sind auch offline und ohne Drive
   lesbar. In Drive löschen ändert in der App nichts. Ein in der App entferntes Buch kommt nicht wieder,
   bis du **Einstellungen → Google Drive → Wieder laden** tippst. Ändert sich eine Datei in Drive nach dem
@@ -142,9 +142,12 @@ bleiben auf allen Geräten gleich:
    privaten Projekten normal.
 
 Danach legt die App in „Meine Ablage“ den Ordner **Blatt-Reader** an; Bücher einfach dort hineinlegen.
-Einen anderen Ordner wählst du unter **Einstellungen → Google Drive** über seinen Namen (genau wie in
-Drive geschrieben) oder seinen Link (in Drive: Ordner → Teilen → Link kopieren). Gibt es mehrere Ordner
-mit dem Namen, braucht es den Link. Die anderen Geräte übernehmen die Wahl beim nächsten Abgleich.
+Weitere Ordner kommen unter **Einstellungen → Google Drive → + Ordner hinzufügen** dazu: durch „Meine
+Ablage“ oder „Für mich freigegeben“ tippen und **Diesen Ordner hinzufügen**, oder oben einen Namen bzw.
+Link (in Drive: Ordner → Teilen → Link kopieren) suchen. Die Liste gilt für alle Geräte. **Entfernen**
+gleicht einen Ordner nicht mehr ab, seine Bücher bleiben in der Bibliothek. Kommen die Bücher aus mehr als
+einer Quelle, filtert eine Leiste über der Bibliothek nach Ordner („Sonstige“ = vom Gerät geöffnet oder aus
+einem entfernten Ordner).
 
 Grenzen: Eine LAN-Adresse wie `http://192.168.…` lässt Google nicht zu, am Handy also erst nach dem
 Deploy. Fragt Google im Status „Testen“ alle 7 Tage neu nach, den Status auf **In Produktion** stellen

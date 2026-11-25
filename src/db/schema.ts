@@ -110,7 +110,7 @@ export interface Setting {
   value: unknown
 }
 
-/** A book file in the Google Drive books folder that the sync has dealt with (src/drive/syncBooks.ts). */
+/** A book file in one of the Google Drive books folders that the sync has dealt with (src/drive/syncBooks.ts). */
 export interface DriveFileRow {
   /** Google Drive file id */
   id: string
@@ -119,6 +119,8 @@ export interface DriveFileRow {
   md5?: string
   /** library entry the file was imported as */
   bookId?: string
+  /** the books folder it was found in (app folder or one the user added); not indexed, so no new schema version */
+  sourceId?: string
   /** dismissed = the book was removed from the library, so it is not downloaded again */
   state: 'imported' | 'dismissed' | 'error'
   error?: string

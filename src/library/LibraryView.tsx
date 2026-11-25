@@ -4,8 +4,12 @@ import { Emblem, Glyph } from '../brand/Logo'
 import { InstallButton } from '../pwa/InstallButton'
 import { deleteBook, quizBooks, type QuizBook } from '../db/repo'
 import { db, type Book } from '../db/schema'
-import { DriveBar } from '../drive/DriveBar'
+import { booksFolders, DriveBar } from '../drive/DriveBar'
+import { useDriveState } from '../drive/driveSync'
+import { booksBySource } from '../drive/syncBooks'
 import { href, navigate } from '../router'
+import { setSetting, useSettings } from '../settings/settings'
+import { libraryGroups, type LibraryGroup } from './groups'
 import { importBook } from './importBook'
 
 const ACCEPT = '.epub,.pdf,.mobi,.azw3,.azw,.fb2,.fbz,.cbz'
@@ -34,9 +38,34 @@ function BookQuizLink({ quiz }: { quiz?: QuizBook }) {
   )
 }
 
+/** Chips "Alle · Blatt-Reader · Uni · Sonstige"; only shown when the books come from more than one place. */
+function GroupFilter({ total, groups, active }: { total: number; groups: LibraryGroup[]; active: string }) {
+  const chip = (key: string, name: string, count: number) => (
+    <button key={key} type="button" className="chip" aria-pressed={active === key} onClick={() => void setSetting('libraryFilter', key)}>
+      {name} <span className="chip-count">{count}</span>
+    </button>
+  )
+  return (
+    <div className="chips" role="group" aria-label="Bücher nach Ordner filtern" data-testid="library-filter">
+      {chip('', 'Alle', total)}
+      {groups.map(g => chip(g.key, g.name, g.bookIds.size))}
+    </div>
+  )
+}
+
 export function LibraryView() {
   const books = useLiveQuery(() => db.books.orderBy('addedAt').reverse().toArray(), [])
   const quiz = useLiveQuery(async () => new Map((await quizBooks()).map(q => [q.bookId, q])), [])
+  const drive = useDriveState()
+  const bySource = useLiveQuery(booksBySource, [])
+  const { libraryFilter } = useSettings()
+  const groups = useMemo(
+    () => (books && bySource && drive?.connected ? libraryGroups(books.map(b => b.id), booksFolders(drive), bySource) : []),
+    [books, bySource, drive],
+  )
+  const showFilter = groups.length > 1
+  const activeGroup = showFilter ? groups.find(g => g.key === libraryFilter) : undefined
+  const shown = activeGroup ? books?.filter(b => activeGroup.bookIds.has(b.id)) : books
   const input = useRef<HTMLInputElement>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -93,6 +122,7 @@ export function LibraryView() {
         />
       </header>
       <DriveBar />
+      {showFilter && books && <GroupFilter total={books.length} groups={groups} active={activeGroup?.key ?? ''} />}
       {error && <p className="error">{error}</p>}
       {books && books.length === 0 && (
         <div className="empty">
@@ -103,7 +133,7 @@ export function LibraryView() {
         </div>
       )}
       <ul className="book-grid">
-        {books?.map(book => (
+        {shown?.map(book => (
           <li key={book.id} className="book">
             <button className="book-open" onClick={() => navigate({ name: 'read', bookId: book.id })}>
               <Cover book={book} />

@@ -159,10 +159,30 @@ nach Änderungen hier nachtragen.
   - `driveApi.ts`: REST v3 mit injizierbarem `fetchImpl`. Uploads resumable (kein 5-MB-Limit).
   - `driveSync.ts` (`syncDrive`): App-Ordner „Blatt-Reader“ (gefunden über `appProperties.vokabelReader=root`,
     nicht über den Namen; vor der Umbenennung angelegte Ordner heißen „Vokabel-Reader“ und bleiben in Gebrauch,
-    angezeigt wird der echte Name aus `DriveState.appFolderName`,
-    gewählter Bücherordner in `appProperties.booksFolderId`) → `syncBooks.ts` (neue Drive-IDs herunterladen →
-    `importBook`; `driveFiles.state` `imported`/`dismissed`/`error`, `deleteBook` setzt `dismissed`) →
-    `syncVocab.ts` (`vokabel-reader-sync.json` laden, `mergeBackup` ohne Einstellungen, Stand hochladen).
+    angezeigt wird der echte Name aus `DriveState.appFolderName`) → `syncBooks.ts` (neue Drive-IDs
+    herunterladen → `importBook`; `driveFiles.state` `imported`/`dismissed`/`error`, `deleteBook` setzt
+    `dismissed`) → `syncVocab.ts` (`vokabel-reader-sync.json` laden, `mergeBackup` ohne Einstellungen,
+    Stand hochladen).
+  - **Mehrere Bücherordner** (seit 25.11.2026): Der App-Ordner ist immer einer, weitere stehen für alle Geräte
+    als `appProperties` am App-Ordner, **ein Schlüssel pro Ordner** `bookSource_<id>` = `'1'`. Eine Liste in einem
+    Wert passt nicht, weil Drive 124 Byte für Schlüssel und Wert zusammen erlaubt. Das alte `booksFolderId`
+    (einzelner Ordner statt App-Ordner) zählt weiter als Quelle und wird erst beim Entfernen gelöscht.
+    `sourceIdsOf(app)` liest die Liste, `loadSources` holt die Namen. Ein gelöschter oder nicht mehr
+    freigegebener Ordner bekommt nur `error` in `DriveState.sources`, der Rest (auch Vokabeln) läuft weiter.
+    Dasselbe gilt für Fehler beim Auflisten (`BookSyncResult.folderErrors`). `listFolderTree(id, skip)`
+    überspringt die anderen Quellen, so gehört eine Datei in verschachtelten Quellen zur nächstliegenden.
+    `driveFiles.sourceId` (ohne Index, also ohne neue Schema-Version) merkt sich die Quelle und wird bei
+    bekannten Dateien nachgetragen bzw. umgehängt. `addBookSource`/`removeBookSource` brauchen ein Tippen
+    (Token) und starten danach `syncAgain`. Entfernen lässt die Bücher in der Bibliothek.
+  - `FolderPicker.tsx`: eigener Ordner-Browser statt Google Picker (der braucht API-Key und CSP-Einträge und
+    taugt am Handy wenig). Er nutzt den vorhandenen Scope `drive.readonly` mit `listChildren`,
+    `sharedFolders` (`sharedWithMe = true`), `sharedDrives` (`/drives`) und `findFolders` (Link/ID → genau
+    dieser Ordner; Name → `name contains`, exakte Treffer zuerst). Ein eingefügter Link führt direkt in
+    den Ordner. Die virtuellen Ebenen („Meine Ablage“ usw.) lassen sich nicht hinzufügen.
+  - **Bibliotheksfilter** (`src/library/groups.ts`, `LibraryView`): Chips pro Quelle mit Büchern plus
+    „Sonstige“ (vom Gerät oder aus entfernten Quellen), nur bei mindestens 2 Gruppen. Die Zuordnung kommt aus
+    `booksBySource()` (`driveFiles` mit `imported`). Ein Buch mit gleichem Inhalt in zwei Ordnern steht in
+    beiden. Die Auswahl liegt im Setting `libraryFilter` (in `LOCAL_SETTING_KEYS`).
   - Läuft beim Start, bei `online`, nach einer Quizrunde und per Knopf. Ohne gültiges Token setzt ein
     Hintergrundlauf nur `needsLogin`, dann zeigt `DriveBar` in der Bibliothek den Knopf.
 - **Quiz:** `src/quiz/scheduler.ts` (ts-fsrs, Retention 0.9, Fuzz an), Kartentypen `en-de`, `de-en`,

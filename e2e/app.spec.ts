@@ -705,7 +705,7 @@ test.describe('Google Drive (Google replaced by a stub)', () => {
     test.skip((await section.textContent())!.includes('Nicht eingerichtet'), 'built without VITE_GOOGLE_CLIENT_ID')
     await section.getByRole('button', { name: 'Mit Google verbinden' }).click()
     await expect(page.getByTestId('drive-sync-status')).toContainText('1 neues Buch, 1 neues Wort')
-    await expect(section).toContainText('Bücherordner: Vokabel-Reader')
+    await expect(page.getByTestId('book-sources')).toContainText('Vokabel-Reader')
     expect(syncedTerms()).toEqual(['serendipity'])
 
     await page.goto('/#/vocab')
@@ -752,5 +752,55 @@ test.describe('Google Drive (Google replaced by a stub)', () => {
     await expect(page.getByTestId('drive-sync-status')).toContainText('1 neues Buch')
     await page.goto('/')
     await expect(page.locator('.book-title')).toHaveText(['The Test Book'])
+  })
+
+  test('several books folders: pick a shared folder in the browser, filter the library by folder', async ({ page }) => {
+    const fake = await mockGoogle(page)
+    const app = fake.folder('Blatt-Reader', 'root', { vokabelReader: 'root' })
+    fake.add({ name: 'The Test Book.epub', parents: [app.id], mimeType: 'application/epub+zip', content: readFileSync(fixture('sample.epub')) })
+    const shared = fake.add({ name: 'Paper von Anna', mimeType: 'application/vnd.google-apps.folder', parents: ['annas-root'], sharedWithMe: true, owner: 'Anna' })
+    fake.add({ name: 'paper.pdf', parents: [shared.id], mimeType: 'application/pdf', content: readFileSync(fixture('sample.pdf')) })
+    await page.setViewportSize({ width: 400, height: 800 })
+
+    await page.goto('/#/settings')
+    const section = page.getByTestId('drive-settings')
+    await expect(section).toBeVisible()
+    test.skip((await section.textContent())!.includes('Nicht eingerichtet'), 'built without VITE_GOOGLE_CLIENT_ID')
+    await section.getByRole('button', { name: 'Mit Google verbinden' }).click()
+    await expect(page.getByTestId('drive-sync-status')).toContainText('1 neues Buch')
+
+    // no link to copy: tap through "Für mich freigegeben"
+    await section.getByRole('button', { name: '+ Ordner hinzufügen' }).click()
+    const picker = page.getByTestId('folder-picker')
+    await picker.getByRole('button', { name: /Für mich freigegeben/ }).click()
+    await expect(picker.getByRole('button', { name: /Paper von Anna/ })).toContainText('geteilt von Anna')
+    await picker.getByRole('button', { name: /Paper von Anna/ }).click()
+    await expect(picker).toContainText('1 Buch direkt hier')
+    await picker.getByRole('button', { name: 'Diesen Ordner hinzufügen' }).click()
+    await expect(picker).toHaveCount(0)
+    const sources = page.getByTestId('book-sources')
+    await expect(sources.locator('li', { hasText: 'Paper von Anna' })).toContainText('1 Buch')
+    expect(fake.files.get(app.id)!.appProperties).toMatchObject({ [`bookSource_${shared.id}`]: '1' })
+
+    await page.goto('/')
+    await expect(page.getByTestId('drive-bar')).toContainText('Bücher aus Blatt-Reader und Paper von Anna')
+    const filter = page.getByTestId('library-filter')
+    await expect(filter.getByRole('button')).toHaveText(['Alle 2', 'Blatt-Reader 1', 'Paper von Anna 1'])
+    await filter.getByRole('button', { name: /Paper von Anna/ }).click()
+    await expect(page.locator('.book-title')).toHaveText(['A Statistical Paper'])
+    // phone width: the chips scroll, the page does not get wider
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(400)
+
+    // removed from the list: the book stays, now under "Sonstige"
+    await page.goto('/#/settings')
+    page.once('dialog', dialog => void dialog.accept())
+    await sources.getByRole('button', { name: 'Entfernen' }).click()
+    await expect(sources).not.toContainText('Paper von Anna')
+    expect(fake.files.get(app.id)!.appProperties).toEqual({ vokabelReader: 'root' })
+    await page.goto('/')
+    await expect(filter.getByRole('button')).toHaveText(['Alle 2', 'Blatt-Reader 1', 'Sonstige 1'])
+    // the chosen folder is gone: all books again
+    await expect(filter.getByRole('button', { name: /Alle/ })).toHaveAttribute('aria-pressed', 'true')
+    await expect(page.locator('.book-title')).toHaveCount(2)
   })
 })

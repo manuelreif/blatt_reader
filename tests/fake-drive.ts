@@ -9,6 +9,10 @@ export interface FakeFile {
   content?: Uint8Array
   appProperties?: Record<string, string>
   trashed?: boolean
+  /** shared with the user by someone else ("Für mich freigegeben") */
+  sharedWithMe?: boolean
+  /** display name of the owner when it is not the user */
+  owner?: string
 }
 
 export interface FakeRequest {
@@ -36,6 +40,8 @@ export class FakeDrive {
   pageSize = 1000
   /** "METHOD /path" of every request */
   log: string[] = []
+  /** shared drives the user is a member of */
+  drives: { id: string; name: string }[] = []
   private sessions = new Map<string, { fileId?: string; metadata: Partial<FakeFile> }>()
   private seq = 0
 
@@ -49,6 +55,8 @@ export class FakeDrive {
       content: typeof f.content === 'string' ? enc.encode(f.content) : f.content,
       appProperties: f.appProperties,
       trashed: f.trashed,
+      sharedWithMe: f.sharedWithMe,
+      owner: f.owner,
     }
     this.files.set(file.id, file)
     return file
@@ -76,6 +84,8 @@ export class FakeDrive {
       trashed: !!f.trashed,
       ...(f.mimeType === FOLDER ? {} : { size: String(f.content?.length ?? 0) }),
       ...(f.appProperties ? { appProperties: f.appProperties } : {}),
+      ownedByMe: !f.owner,
+      owners: [{ displayName: f.owner ?? 'Ich' }],
     }
   }
 
@@ -98,21 +108,34 @@ export class FakeDrive {
       const q = p.get('q') ?? ''
       const parent = q.match(/'((?:[^'\\]|\\.)*)' in parents/)?.[1]
       const name = q.match(/name = '((?:[^'\\]|\\.)*)'/)?.[1]
+      const contains = q.match(/name contains '((?:[^'\\]|\\.)*)'/)?.[1]
       const mime = q.match(/mimeType = '([^']+)'/)?.[1]
       const prop = q.match(/appProperties has \{ key='([^']+)' and value='([^']+)' \}/)
+      const shared = q.includes('sharedWithMe = true')
       const all = [...this.files.values()].filter(
         f =>
           !f.trashed &&
           (!parent || f.parents.includes(unquote(parent))) &&
           (!name || f.name === unquote(name)) &&
+          (!contains || f.name.toLowerCase().includes(unquote(contains).toLowerCase())) &&
           (!mime || f.mimeType === mime) &&
-          (!prop || f.appProperties?.[prop[1]] === prop[2]),
+          (!prop || f.appProperties?.[prop[1]] === prop[2]) &&
+          (!shared || !!f.sharedWithMe),
       )
+      const orderBy = p.get('orderBy') ?? ''
+      if (orderBy.includes('name'))
+        all.sort(
+          (a, b) =>
+            (orderBy.startsWith('folder') ? Number(b.mimeType === FOLDER) - Number(a.mimeType === FOLDER) : 0) ||
+            a.name.localeCompare(b.name),
+        )
       const start = Number(p.get('pageToken') ?? 0)
       const size = Math.min(Number(p.get('pageSize') ?? 100), this.pageSize)
       const page = all.slice(start, start + size)
       return json({ files: page.map(f => this.meta(f)), ...(start + size < all.length ? { nextPageToken: String(start + size) } : {}) })
     }
+
+    if (req.method === 'GET' && path === '/drive/v3/drives') return json({ drives: this.drives })
 
     if (req.method === 'POST' && path === '/drive/v3/files') {
       const m = bodyJson() as Partial<FakeFile>
